@@ -9,16 +9,21 @@
 <script src="../_sdk/desktroo-app.js"></script>
 <!-- Desktroo Remote — © 2026 Mdm-services.fr. Tous droits réservés. -->
 <style>
+  /* Comme les fenêtres de Desktroo : cartes et champs en voile sur le fond de la fenêtre (--bg, envoyé par le bureau),
+     pour suivre tous les thèmes au lieu des surfaces fixes du kit. */
+  :root { --card: rgba(255,255,255,0.06); --field: rgba(0,0,0,0.20); --card-solid: rgba(255,255,255,0.08); }
+  :root[data-theme="light"] { --card: rgba(255,255,255,0.62); --field: rgba(255,255,255,0.88); --card-solid: rgba(255,255,255,0.75); }
+  .dk-input { background: var(--field); }
   .pane { display: none; } .pane.active { display: block; }
   a.dk-btn { text-decoration: none; }
   a.dk-btn.disabled { opacity: .5; pointer-events: none; }
-  .card { background: var(--surface); border: 1px solid var(--glass-border); border-radius: 14px; padding: 18px; margin-bottom: 16px; max-width: 860px; }
+  .card { background: var(--card); border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; max-width: 860px; }
   .card h2 { margin: 0 0 4px; font-size: 15px; }
   .card p { margin: 6px 0; }
   .dim { color: var(--text-dim); font-size: 13px; }
   .mono { font-family: var(--font-mono); font-size: 12.5px; word-break: break-all; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; max-width: 860px; margin-bottom: 16px; }
-  .stat { background: var(--surface); border: 1px solid var(--glass-border); border-radius: 14px; padding: 14px 16px; }
+  .stat { background: var(--card); border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 14px 16px; }
   .stat .k { font-size: 12px; color: var(--text-dim); }
   .stat .v { font-size: 20px; font-weight: 700; font-family: var(--font-display); margin-top: 2px; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--text-dim); margin-right: 7px; vertical-align: 1px; flex-shrink: 0; }
@@ -26,7 +31,7 @@
   .dot.off { background: var(--danger); }
   .dot.busy { background: var(--warning); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
   .field { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
-  .field .val { flex: 1; min-width: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--glass-border); }
+  .field .val { flex: 1; min-width: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--field); border: 1px solid var(--glass-border); }
   .lbl { font-size: 12px; font-weight: 600; margin-top: 14px; }
   table.ports { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; }
   table.ports td, table.ports th { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--glass-border); }
@@ -40,10 +45,10 @@
   .search { max-width: 340px; }
   .devs { list-style: none; margin: 14px 0 0; padding: 0; max-width: 980px; }
   /* Fenêtre étroite : les boutons passent sous les infos du poste au lieu de les écraser. */
-  .devs li { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; background: var(--surface); border: 1px solid var(--glass-border); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
+  .devs li { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; background: var(--card); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 8px; }
   .devs li > .dot { align-self: flex-start; margin-top: 6px; }
   .devs .main { flex: 1 1 300px; min-width: 0; }
-  .devs .hint { flex-basis: 100%; font-size: 12.5px; padding: 8px 12px; border-radius: 10px; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.35); }
+  .devs .hint { flex-basis: 100%; font-size: 12.5px; padding: 8px 12px; border-radius: var(--radius-sm); background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.35); }
   .devs .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .devs .meta { font-size: 12px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .devs .note { font-size: 12px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
@@ -53,15 +58,15 @@
   .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; background: rgba(var(--accent-rgb),.16); color: var(--accent2); font-size: 11px; font-weight: 600; margin-left: 6px; vertical-align: 1px; }
   .badge.busy { background: rgba(245,158,11,.16); color: var(--warning); }
   .empty { color: var(--text-dim); font-size: 13px; padding: 20px 0; max-width: 640px; }
-  pre.logs { background: var(--surface-2); border: 1px solid var(--glass-border); border-radius: 12px; padding: 12px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; max-height: calc(100vh - 200px); overflow: auto; margin: 12px 0 0; }
+  pre.logs { background: var(--field); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); padding: 12px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; max-height: calc(100vh - 200px); overflow: auto; margin: 12px 0 0; }
   select.dk-input { width: auto; }
-  dialog { border: 1px solid var(--glass-border); border-radius: 16px; background: var(--surface); color: var(--text); padding: 20px; width: min(440px, 92vw); }
+  dialog { border: 1px solid var(--glass-border); border-radius: var(--radius); background: linear-gradient(var(--card-solid), var(--card-solid)), var(--bg); color: var(--text); padding: 20px; width: min(440px, 92vw); }
   dialog::backdrop { background: rgba(0,0,0,.45); }
-  dialog textarea { width: 100%; min-height: 80px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--glass-border); background: var(--surface-2); color: var(--text); font: 14px var(--font-body); resize: vertical; }
+  dialog textarea { width: 100%; min-height: 80px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--glass-border); background: var(--field); color: var(--text); font: 14px var(--font-body); resize: vertical; }
   dialog h2 { margin: 0 0 4px; }
   .addgrid { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 8px; margin-top: 6px; }
   @media (max-width: 760px) { .addgrid { grid-template-columns: 1fr; } }
-  .tag { display: inline-block; padding: 1px 8px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--glass-border); font-size: 11.5px; margin-right: 6px; vertical-align: 1px; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 6px; background: var(--field); border: 1px solid var(--glass-border); font-size: 11.5px; margin-right: 6px; vertical-align: 1px; }
   .err { color: var(--danger); } .okc { color: var(--success); }
   dialog .lbl { margin: 16px 0 6px; }
   @media (max-width: 620px) { .devs .btns { width: 100%; justify-content: flex-start; margin-left: 0; } }
@@ -270,7 +275,7 @@ const I18N = {
     dl_t: 'Windows : RustDesk préconfiguré', dl_d: 'Le programme officiel de RustDesk, renommé pour se relier à votre serveur dès son lancement. Envoyez-le à votre client : il l’ouvre, vous donne son ID et son mot de passe, et c’est tout. Il fonctionne sans installation ou peut être installé depuis sa fenêtre.',
     dl_btn: 'Télécharger pour Windows', dl_ver: 'RustDesk {v}, téléchargé depuis GitHub',
     dl_name: 'Nom du fichier', dl_name_d: 'Le réglage du serveur est dans ce nom : s’il a été changé (navigateur, messagerie), le programme se relie au serveur public de RustDesk. Renommez-le alors exactement ainsi.',
-    ps_t: 'Windows : installation par script', ps_d: 'Installe RustDesk comme service (accès même sans personne devant l’écran), le règle pour votre serveur et affiche l’ID du poste. Pour vos postes gérés ou un déploiement en série.',
+    ps_t: 'Windows : installation par script', ps_d: 'Installe RustDesk comme service (accès même sans personne devant l’écran), le règle pour votre serveur et affiche l’ID du poste. Pour vos postes gérés ou un déploiement en série. Il habille aussi RustDesk aux couleurs de Desktroo Remote (logo, icône, raccourcis).',
     ps_pw: 'Créer un mot de passe permanent', ps_pw_d: 'Un mot de passe aléatoire, propre à chaque poste, affiché une seule fois à la fin du script : accès sans que l’utilisateur ait à accepter.',
     ps_btn: 'Télécharger le script',
     ps_s1: 'Copiez <b>desktroo-remote.ps1</b> sur le poste.',
@@ -349,7 +354,7 @@ const I18N = {
     dl_t: 'Windows: preconfigured RustDesk', dl_d: 'The official RustDesk program, renamed so it links to your server as soon as it starts. Send it to your customer: they open it, give you their ID and password, and that’s it. It runs without installation, or can be installed from its window.',
     dl_btn: 'Download for Windows', dl_ver: 'RustDesk {v}, downloaded from GitHub',
     dl_name: 'File name', dl_name_d: 'The server setting is in this name: if it was changed (browser, email), the program links to RustDesk’s public server. Rename it to exactly this.',
-    ps_t: 'Windows: scripted installation', ps_d: 'Installs RustDesk as a service (access even with nobody at the screen), configures it for your server and shows the device ID. For your managed devices or bulk deployment.',
+    ps_t: 'Windows: scripted installation', ps_d: 'Installs RustDesk as a service (access even with nobody at the screen), configures it for your server and shows the device ID. For your managed devices or bulk deployment. It also brands RustDesk with Desktroo Remote’s look (logo, icon, shortcuts).',
     ps_pw: 'Create a permanent password', ps_pw_d: 'A random password, unique to each device, shown only once at the end of the script: access without the user having to accept.',
     ps_btn: 'Download the script',
     ps_s1: 'Copy <b>desktroo-remote.ps1</b> to the device.',
@@ -428,7 +433,7 @@ const I18N = {
     dl_t: 'Windows: RustDesk preconfigurado', dl_d: 'El programa oficial de RustDesk, renombrado para conectarse a tu servidor en cuanto se abre. Envíaselo a tu cliente: lo abre, te da su ID y su contraseña, y listo. Funciona sin instalación o puede instalarse desde su ventana.',
     dl_btn: 'Descargar para Windows', dl_ver: 'RustDesk {v}, descargado de GitHub',
     dl_name: 'Nombre del archivo', dl_name_d: 'El ajuste del servidor está en este nombre: si se ha cambiado (navegador, correo), el programa se conecta al servidor público de RustDesk. Renómbralo exactamente así.',
-    ps_t: 'Windows: instalación por script', ps_d: 'Instala RustDesk como servicio (acceso incluso sin nadie delante de la pantalla), lo configura para tu servidor y muestra el ID del equipo. Para tus equipos gestionados o un despliegue en serie.',
+    ps_t: 'Windows: instalación por script', ps_d: 'Instala RustDesk como servicio (acceso incluso sin nadie delante de la pantalla), lo configura para tu servidor y muestra el ID del equipo. Para tus equipos gestionados o un despliegue en serie. También viste RustDesk con la imagen de Desktroo Remote (logo, icono, accesos directos).',
     ps_pw: 'Crear una contraseña permanente', ps_pw_d: 'Una contraseña aleatoria, propia de cada equipo, mostrada una sola vez al final del script: acceso sin que el usuario tenga que aceptar.',
     ps_btn: 'Descargar el script',
     ps_s1: 'Copia <b>desktroo-remote.ps1</b> en el equipo.',

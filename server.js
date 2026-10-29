@@ -88,7 +88,7 @@ function readKey() {
 }
 function apiUrl() { return HOST ? `http://${HOST}:${PORTS.api}` : ''; }
 // Format lu par le client RustDesk (custom_server.rs) : JSON {host, key, api, relay}, base64 « URL », renversé.
-// Il s'importe par « rustdesk --config <chaîne> », dans le nom du programme (rustdesk-licensed-<chaîne>.exe) ou par le
+// Il s'importe par « rustdesk --config <chaîne> », dans le nom du programme (desktroo-remote--<chaîne>.exe) ou par le
 // bouton « Importer » des réglages réseau.
 // - Courte : les navigateurs raccourcissent les noms de fichier trop longs (un nom de 248 caractères est arrivé coupé à
 //   187 : configuration illisible, le client part sur le serveur public). Seuls l'adresse et la clé y figurent : le
@@ -96,12 +96,14 @@ function apiUrl() { return HOST ? `http://${HOST}:${PORTS.api}` : ''; }
 // - Sûre : le nom comme « --config » passent par un découpage sur « -- », et un « - » collé à « -licensed- » est
 //   absorbé : la chaîne ne doit ni contenir « -- » ni commencer ou finir par « - ». Des espaces (sans effet sur le
 //   JSON) changent l'encodage jusqu'à en obtenir une sûre.
+const encodeConfig = (json) => Buffer.from(json, 'utf8').toString('base64url').split('').reverse().join('');
+// « -qs- » ou « -qs.exe » dans le nom fait passer le client en mode « assistance rapide » (libs/portable) : à éviter aussi.
+const safeConfig = (c) => !c.includes('--') && !c.startsWith('-') && !c.endsWith('-') && !/-qs(-|$)|_qs$|^qs-/i.test(c);
 function configString(key) {
   if (!HOST || !key) return '';
   for (let n = 0; n < 64; n++) {
-    const json = `{"host":"${HOST}",${' '.repeat(n)}"key":"${key}"}`;
-    const c = Buffer.from(json, 'utf8').toString('base64url').split('').reverse().join('');
-    if (!c.includes('--') && !c.startsWith('-') && !c.endsWith('-')) return c;
+    const c = encodeConfig(`{"host":"${HOST}",${' '.repeat(n)}"key":"${key}"}`);
+    if (safeConfig(c)) return c;
   }
   return '';
 }
@@ -111,9 +113,8 @@ function techConfigString(key) {
   const api = settings.apiUrl || '';
   if (!HOST || !key || !api) return '';
   for (let n = 0; n < 64; n++) {
-    const json = `{"host":"${HOST}",${' '.repeat(n)}"key":"${key}","api":"${api}"}`;
-    const c = Buffer.from(json, 'utf8').toString('base64url').split('').reverse().join('');
-    if (!c.includes('--') && !c.startsWith('-') && !c.endsWith('-')) return c;
+    const c = encodeConfig(`{"host":"${HOST}",${' '.repeat(n)}"key":"${key}","api":"${api}"}`);
+    if (safeConfig(c)) return c;
   }
   return '';
 }
@@ -121,7 +122,7 @@ function techConfigString(key) {
 const API_URL_RE = /^(https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d{2,5})?|http:\/\/(?:10|127|192\.168|172\.(?:1[6-9]|2\d|3[01]))(?:\.\d{1,3}){1,3}:\d{2,5}|http:\/\/[a-z0-9-]{1,63}(?:\.local|\.lan|\.home)?:\d{2,5})$/;
 function clientFilename(key) {
   const c = configString(key);
-  return c ? `rustdesk-licensed-${c}.exe` : '';
+  return c ? `desktroo-remote--${c}.exe` : '';   // le client découpe sur « -- » : le préfixe est ignoré
 }
 
 // ── Postes : base de hbbs (enregistrés) + présence et fiches envoyées par les clients ──
@@ -566,6 +567,67 @@ async function streamClient(res, filename) {
 }
 
 const psq = (s) => "'" + String(s).replace(/'/g, "''") + "'";
+
+// ── Habillage Desktroo Remote du client installé ───────────────────────────
+// Sans toucher aux programmes signés (rustdesk.exe, *.dll) : le client affiche « assets/logo_light.png » ou
+// « logo_dark.png » en bandeau s'il les trouve (flutter/lib/common.dart, loadLogo), et « assets/icon.png » comme icône
+// (loadIcon). Ces fichiers et les raccourcis sont réappliqués par une tâche planifiée (au démarrage, puis toutes les
+// 6 h) : une mise à jour de RustDesk les remet d'origine. Le dossier de la tâche n'est modifiable que par SYSTEM et
+// les administrateurs, puisqu'elle s'exécute en SYSTEM.
+const BRAND_FILES = { 'logo_light.png': 'brand/logo_light.png', 'logo_dark.png': 'brand/logo_dark.png', 'icon.png': 'brand/icon.png',
+                      'icon.svg': 'icon.svg', 'desktroo-remote.ico': 'brand/desktroo-remote.ico' };
+let brandCache = null;
+function brandingScript() {
+  if (brandCache) return brandCache;
+  const files = [];
+  for (const [name, rel] of Object.entries(BRAND_FILES)) {
+    try { files.push([name, fs.readFileSync(path.join(PUB, rel)).toString('base64')]); } catch (_) { return ''; }
+  }
+  const apply = String.raw`# Desktroo Remote : habillage de RustDesk (logo, icone, raccourcis). Lance par la tache planifiee « Desktroo Remote - habillage ».
+$ErrorActionPreference = 'SilentlyContinue'
+$src = $PSScriptRoot
+$dst = Join-Path $env:ProgramFiles 'RustDesk\data\flutter_assets\assets'
+if (Test-Path $dst) {
+  foreach ($f in 'logo_light.png','logo_dark.png','icon.png','icon.svg') {
+    $a = Join-Path $src $f; $b = Join-Path $dst $f
+    if (-not (Test-Path $b) -or (Get-FileHash $a).Hash -ne (Get-FileHash $b).Hash) { Copy-Item $a $b -Force }
+  }
+  Copy-Item (Join-Path $src 'logo_light.png') (Join-Path $dst 'logo.png') -Force
+}
+$ico = Join-Path $src 'desktroo-remote.ico'
+$sh = New-Object -ComObject WScript.Shell
+$places = @((Join-Path $env:PUBLIC 'Desktop'), (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'))
+Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
+  $l = $sh.CreateShortcut($_.FullName)
+  if ($l.TargetPath -notlike '*\RustDesk\rustdesk.exe') { return }
+  if (-not $l.Arguments -and $_.BaseName -ne 'Desktroo Remote') {
+    $n = $sh.CreateShortcut((Join-Path $_.DirectoryName 'Desktroo Remote.lnk'))
+    $n.TargetPath = $l.TargetPath; $n.WorkingDirectory = $l.WorkingDirectory; $n.IconLocation = "$ico,0"; $n.Description = 'Desktroo Remote'; $n.Save()
+    Remove-Item $_.FullName -Force
+  } elseif ($l.IconLocation -notlike '*desktroo-remote.ico*') { $l.IconLocation = "$ico,0"; $l.Save() }
+}`;
+  brandCache = [
+    '',
+    '# --- Habillage Desktroo Remote (logo, icone, raccourcis) ---',
+    'Write-Host \'Habillage Desktroo Remote...\'',
+    '$brand = Join-Path $env:ProgramData \'DesktrooRemote\'',
+    'New-Item -ItemType Directory -Force $brand | Out-Null',
+    '# Dossier reserve a SYSTEM et aux administrateurs : la tache qui l\'utilise tourne en SYSTEM.',
+    'icacls $brand /inheritance:r /grant:r \'*S-1-5-18:(OI)(CI)F\' \'*S-1-5-32-544:(OI)(CI)F\' \'*S-1-5-32-545:(OI)(CI)RX\' | Out-Null',
+    ...files.map(([name, b64]) => `[IO.File]::WriteAllBytes((Join-Path $brand '${name}'), [Convert]::FromBase64String('${b64}'))`),
+    '$apply = @\'',
+    apply,
+    '\'@',
+    'Set-Content -Path (Join-Path $brand \'habillage.ps1\') -Value $apply -Encoding UTF8',
+    '$act = New-ScheduledTaskAction -Execute \'powershell.exe\' -Argument (\'-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "\' + (Join-Path $brand \'habillage.ps1\') + \'"\')',
+    '$t1 = New-ScheduledTaskTrigger -AtStartup',
+    '$t2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 6) -RepetitionDuration (New-TimeSpan -Days 3650)',
+    'Register-ScheduledTask -TaskName \'Desktroo Remote - habillage\' -Action $act -Trigger @($t1, $t2) -User \'SYSTEM\' -RunLevel Highest -Force | Out-Null',
+    '& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $brand \'habillage.ps1\')',
+    '',
+  ].join('\r\n');
+  return brandCache;
+}
 function windowsScript(cfg, withPassword) {
   return [
     '# Desktroo Remote : installe RustDesk et le relie au serveur ' + HOST + '.',
@@ -607,6 +669,7 @@ function windowsScript(cfg, withPassword) {
     '  $pw = -join ($bytes | ForEach-Object { $chars[$_ % $chars.Length] })',
     '  & $exe --password $pw | Out-Null',
     '}',
+    brandingScript(),
     '$id = (& $exe --get-id | Out-String).Trim()',
     'Write-Host \'\'',
     'Write-Host \'RustDesk est pret.\' -ForegroundColor Green',
