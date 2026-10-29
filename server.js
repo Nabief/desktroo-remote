@@ -122,7 +122,7 @@ function techConfigString(key) {
 const API_URL_RE = /^(https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d{2,5})?|http:\/\/(?:10|127|192\.168|172\.(?:1[6-9]|2\d|3[01]))(?:\.\d{1,3}){1,3}:\d{2,5}|http:\/\/[a-z0-9-]{1,63}(?:\.local|\.lan|\.home)?:\d{2,5})$/;
 function clientFilename(key) {
   const c = configString(key);
-  return c ? `desktroo-remote--${c}.exe` : '';   // le client découpe sur « -- » : le préfixe est ignoré
+  return c ? `${brandSlug()}--${c}.exe` : '';   // le client découpe sur « -- » : le préfixe est ignoré
 }
 
 // ── Postes : base de hbbs (enregistrés) + présence et fiches envoyées par les clients ──
@@ -237,6 +237,14 @@ function readBody(req, max) {
       if (n > max) { over = true; parts.length = 0; reject(fail('too_large', 413)); } else parts.push(c);
     });
     req.on('end', () => { if (!over) resolve(Buffer.concat(parts).toString('utf8')); });
+    req.on('error', reject);
+  });
+}
+function readRaw(req, max) {
+  return new Promise((resolve, reject) => {
+    const parts = []; let n = 0, over = false;
+    req.on('data', (c) => { if (over) return; n += c.length; if (n > max) { over = true; parts.length = 0; reject(fail('too_large', 413)); } else parts.push(c); });
+    req.on('end', () => { if (!over) resolve(Buffer.concat(parts)); });
     req.on('error', reject);
   });
 }
@@ -575,9 +583,9 @@ const psq = (s) => "'" + String(s).replace(/'/g, "''") + "'";
 // Enregistré sans BOM (cmd ne le comprend pas) ; PowerShell le lit en UTF-8.
 function windowsCmd(ps) {
   return [
-    '<# : Desktroo Remote',
+    '<# : script',
     '@echo off',
-    'title Desktroo Remote',
+    'title ' + cmdSafe(brandName()),
     'net session >nul 2>&1',
     'if errorlevel 1 (',
     '  echo Autorisation administrateur demandee...',
@@ -599,22 +607,73 @@ function windowsCmd(ps) {
 // (loadIcon). Ces fichiers et les raccourcis sont réappliqués par une tâche planifiée (au démarrage, puis toutes les
 // 6 h) : une mise à jour de RustDesk les remet d'origine. Le dossier de la tâche n'est modifiable que par SYSTEM et
 // les administrateurs, puisqu'elle s'exécute en SYSTEM.
-const BRAND_FILES = { 'logo_light.png': 'brand/logo_light.png', 'logo_dark.png': 'brand/logo_dark.png', 'icon.png': 'brand/icon.png',
-                      'icon.svg': 'icon.svg', 'desktroo-remote.ico': 'brand/desktroo-remote.ico' };
+// Habillage personnalisable : nom (raccourcis, fichiers téléchargés) et images, réglés dans le panneau (onglet
+// « Habillage ») et gardés dans /data/brand ; par défaut, ceux de Desktroo Remote (public/brand).
+const BRAND_DIR = path.join(DATA, 'brand');
+const BRAND_DEFAULT_NAME = 'Desktroo Remote';
+const BRAND_SLOTS = {   // emplacement → contrôle de l'image envoyée
+  logo_light: (w, h) => w >= 120 && w <= 2000 && h >= 30 && h <= 800 && w >= h,
+  logo_dark: (w, h) => w >= 120 && w <= 2000 && h >= 30 && h <= 800 && w >= h,
+  icon: (w, h) => w === h && w >= 64 && w <= 1024,
+};
+const BRAND_NAME_RE = /^[^\\/:*?"<>|\x00-\x1f]{1,40}$/;
+let brandVersion = 0;
+function pngSize(buf) {   // { w, h } d'un PNG valide, sinon null
+  if (!Buffer.isBuffer(buf) || buf.length < 33 || buf.readUInt32BE(0) !== 0x89504e47 || buf.readUInt32BE(4) !== 0x0d0a1a0a
+      || buf.toString('ascii', 12, 16) !== 'IHDR') return null;
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+}
+function brandCustom(slot) { try { return fs.readFileSync(path.join(BRAND_DIR, slot + '.png')); } catch (_) { return null; } }
+const brandDefault = (rel) => fs.readFileSync(path.join(PUB, rel));
+// Icône Windows faite d'une seule image PNG (format accepté depuis Windows Vista).
+function pngToIco(png) {
+  const { w, h } = pngSize(png);
+  const head = Buffer.alloc(22);
+  head.writeUInt16LE(0, 0); head.writeUInt16LE(1, 2); head.writeUInt16LE(1, 4);
+  head.writeUInt8(w >= 256 ? 0 : w, 6); head.writeUInt8(h >= 256 ? 0 : h, 7);
+  head.writeUInt16LE(1, 10); head.writeUInt16LE(32, 12); head.writeUInt32LE(png.length, 14); head.writeUInt32LE(22, 18);
+  return Buffer.concat([head, png]);
+}
+function brandName() { return (settings.brandName || '').trim() || BRAND_DEFAULT_NAME; }
+// Nom de fichier tiré du nom de l'habillage (« Assistance Dupont » → « assistance-dupont »). Le client RustDesk lit
+// sa configuration après « -- » et passe en « assistance rapide » si le nom contient « -qs- » : on s'en garde.
+function brandSlug() {
+  const s = brandName().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+  if (!s || /licensed|(^|-)qs(-|$)|_qs/.test(s)) return 'desktroo-remote';
+  return s;
+}
+// Images effectivement envoyées aux postes : un bandeau manquant reprend l'autre, puis celui de Desktroo Remote.
+function brandFiles() {
+  const light = brandCustom('logo_light'), dark = brandCustom('logo_dark'), icon = brandCustom('icon');
+  const files = {
+    'logo_light.png': light || dark || brandDefault('brand/logo_light.png'),
+    'logo_dark.png': dark || light || brandDefault('brand/logo_dark.png'),
+    'icon.png': icon || brandDefault('brand/icon.png'),
+    'desktroo-remote.ico': icon ? pngToIco(icon) : brandDefault('brand/desktroo-remote.ico'),
+  };
+  if (!icon) files['icon.svg'] = brandDefault('icon.svg');
+  return files;
+}
+const cmdSafe = (s) => String(s).replace(/[&|<>^%!"()]/g, '').trim() || BRAND_DEFAULT_NAME;
+
 let brandCache = null;
 function brandingScript() {
-  if (brandCache) return brandCache;
-  const files = [];
-  for (const [name, rel] of Object.entries(BRAND_FILES)) {
-    try { files.push([name, fs.readFileSync(path.join(PUB, rel)).toString('base64')]); } catch (_) { return ''; }
-  }
-  const apply = String.raw`# Desktroo Remote : habillage de RustDesk (logo, icone, raccourcis). Lance par la tache planifiee « Desktroo Remote - habillage ».
+  if (brandCache && brandCache.v === brandVersion) return brandCache.text;
+  let files;
+  try { files = Object.entries(brandFiles()).map(([n, b]) => [n, b.toString('base64')]); } catch (_) { return ''; }
+  const name = brandName();
+  const apply = String.raw`# Habillage de RustDesk (logo, icone, raccourcis), lance par la tache planifiee « Desktroo Remote - habillage ».
 $ErrorActionPreference = 'SilentlyContinue'
 $src = $PSScriptRoot
+$name = ''
+try { $name = ([IO.File]::ReadAllText((Join-Path $src 'name.txt'))).Trim() } catch { }
+if (-not $name) { $name = 'Desktroo Remote' }
 $dst = Join-Path $env:ProgramFiles 'RustDesk\data\flutter_assets\assets'
 if (Test-Path $dst) {
   foreach ($f in 'logo_light.png','logo_dark.png','icon.png','icon.svg') {
     $a = Join-Path $src $f; $b = Join-Path $dst $f
+    if (-not (Test-Path $a)) { continue }
     if (-not (Test-Path $b) -or (Get-FileHash $a).Hash -ne (Get-FileHash $b).Hash) { Copy-Item $a $b -Force }
   }
   Copy-Item (Join-Path $src 'logo_light.png') (Join-Path $dst 'logo.png') -Force
@@ -625,21 +684,23 @@ $places = @((Join-Path $env:PUBLIC 'Desktop'), (Join-Path $env:ProgramData 'Micr
 Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
   $l = $sh.CreateShortcut($_.FullName)
   if ($l.TargetPath -notlike '*\RustDesk\rustdesk.exe') { return }
-  if (-not $l.Arguments -and $_.BaseName -ne 'Desktroo Remote') {
-    $n = $sh.CreateShortcut((Join-Path $_.DirectoryName 'Desktroo Remote.lnk'))
-    $n.TargetPath = $l.TargetPath; $n.WorkingDirectory = $l.WorkingDirectory; $n.IconLocation = "$ico,0"; $n.Description = 'Desktroo Remote'; $n.Save()
+  if (-not $l.Arguments -and $_.BaseName -ne $name) {
+    $n = $sh.CreateShortcut((Join-Path $_.DirectoryName ($name + '.lnk')))
+    $n.TargetPath = $l.TargetPath; $n.WorkingDirectory = $l.WorkingDirectory; $n.IconLocation = "$ico,0"; $n.Description = $name; $n.Save()
     Remove-Item $_.FullName -Force
-  } elseif ($l.IconLocation -notlike '*desktroo-remote.ico*') { $l.IconLocation = "$ico,0"; $l.Save() }
+  } else { $l.IconLocation = "$ico,0"; $l.Save() }
 }`;
-  brandCache = [
+  const text = [
     '',
-    '# --- Habillage Desktroo Remote (logo, icone, raccourcis) ---',
-    'Write-Host \'Habillage Desktroo Remote...\'',
+    '# --- Habillage (logo, icone, raccourcis) ---',
+    'Write-Host (\'Habillage \' + ' + psq(name) + ' + \'...\')',
     '$brand = Join-Path $env:ProgramData \'DesktrooRemote\'',
     'New-Item -ItemType Directory -Force $brand | Out-Null',
     '# Dossier reserve a SYSTEM et aux administrateurs : la tache qui l\'utilise tourne en SYSTEM.',
     'icacls $brand /inheritance:r /grant:r \'*S-1-5-18:(OI)(CI)F\' \'*S-1-5-32-544:(OI)(CI)F\' \'*S-1-5-32-545:(OI)(CI)RX\' | Out-Null',
-    ...files.map(([name, b64]) => `[IO.File]::WriteAllBytes((Join-Path $brand '${name}'), [Convert]::FromBase64String('${b64}'))`),
+    'Remove-Item (Join-Path $brand \'icon.svg\') -Force -ErrorAction SilentlyContinue',
+    '[IO.File]::WriteAllText((Join-Path $brand \'name.txt\'), ' + psq(name) + ', (New-Object Text.UTF8Encoding $false))',
+    ...files.map(([n, b64]) => `[IO.File]::WriteAllBytes((Join-Path $brand '${n}'), [Convert]::FromBase64String('${b64}'))`),
     '$apply = @\'',
     apply,
     '\'@',
@@ -651,7 +712,8 @@ Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
     '& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $brand \'habillage.ps1\')',
     '',
   ].join('\r\n');
-  return brandCache;
+  brandCache = { v: brandVersion, text };
+  return text;
 }
 function windowsScript(cfg, withPassword) {
   return [
@@ -747,6 +809,42 @@ async function panelRoute(req, res, url, user) {
     if (u && !API_URL_RE.test(u)) throw fail('bad_api_url');
     settings.apiUrl = u; saveSettings();
     log('adresse de l’API des techniciens :', u || '(aucune)', 'par', user);
+    return json(res, 200, { ok: true });
+  }
+  // Habillage
+  if (p === '/api/brand' && m === 'GET') {
+    const custom = {};
+    for (const s of Object.keys(BRAND_SLOTS)) custom[s] = !!brandCustom(s);
+    return json(res, 200, { name: settings.brandName || '', defaultName: BRAND_DEFAULT_NAME, effectiveName: brandName(), slug: brandSlug(), custom, v: brandVersion });
+  }
+  if (p === '/api/brand' && m === 'PUT') {
+    const b = await readJson(req);
+    const n = String(b.name || '').trim();
+    if (n && (!BRAND_NAME_RE.test(n) || /^[.\s]|[.\s]$/.test(n))) throw fail('bad_brand_name');
+    settings.brandName = n; saveSettings(); brandVersion++;
+    log('nom de l’habillage :', n || '(par défaut)', 'par', user);
+    return json(res, 200, { ok: true });
+  }
+  const bm = /^\/(api\/brand\/img|brand\/img)\/(logo_light|logo_dark|icon)$/.exec(p);
+  if (bm && bm[1] === 'brand/img' && m === 'GET') {   // aperçu : l'image envoyée aux postes pour cet emplacement
+    const f = brandFiles()[bm[2] === 'icon' ? 'icon.png' : bm[2] + '.png'];
+    return send(res, 200, f, 'image/png', { 'Cache-Control': 'no-store' });
+  }
+  if (bm && bm[1] === 'api/brand/img' && m === 'PUT') {
+    const buf = await readRaw(req, 1024 * 1024);
+    const sz = pngSize(buf);
+    if (!sz) throw fail('bad_png');
+    if (!BRAND_SLOTS[bm[2]](sz.w, sz.h)) throw fail(bm[2] === 'icon' ? 'bad_icon_size' : 'bad_logo_size');
+    fs.mkdirSync(BRAND_DIR, { recursive: true });
+    fs.writeFileSync(path.join(BRAND_DIR, bm[2] + '.png'), buf, { mode: 0o600 });
+    brandVersion++;
+    log('habillage :', bm[2], `(${sz.w}×${sz.h})`, 'envoyé par', user);
+    return json(res, 200, { ok: true, w: sz.w, h: sz.h });
+  }
+  if (bm && bm[1] === 'api/brand/img' && m === 'DELETE') {
+    try { fs.unlinkSync(path.join(BRAND_DIR, bm[2] + '.png')); } catch (_) {}
+    brandVersion++;
+    log('habillage :', bm[2], 'remis par défaut par', user);
     return json(res, 200, { ok: true });
   }
   if (p === '/api/techs' && m === 'GET') {
@@ -847,7 +945,7 @@ async function panelRoute(req, res, url, user) {
     if (!cfg) throw fail(tech ? 'no_api_url' : 'not_ready', 409);
     const withPw = !tech && url.searchParams.get('password') === '1';
     log(tech ? 'script du poste technicien téléchargé par' : 'script de déploiement Windows téléchargé par', user, '(' + dm2[1] + ')', withPw ? '(avec mot de passe)' : '');
-    const name = (tech ? 'desktroo-remote-technicien' : 'desktroo-remote') + '.' + dm2[1];
+    const name = brandSlug() + (tech ? '-technicien' : '') + '.' + dm2[1];
     const body = dm2[1] === 'cmd' ? windowsCmd(windowsScript(cfg, withPw)) : '﻿' + windowsScript(cfg, withPw);
     return send(res, 200, body, 'application/octet-stream', { 'Content-Disposition': `attachment; filename="${name}"` });
   }
