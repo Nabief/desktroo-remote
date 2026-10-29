@@ -302,11 +302,12 @@ const MSG = {
   locked: { fr: 'Trop d’essais : réessayez dans quelques minutes.', en: 'Too many attempts: try again in a few minutes.', es: 'Demasiados intentos: inténtalo de nuevo en unos minutos.' },
   bad_code: { fr: 'Code incorrect ou expiré.', en: 'Wrong or expired code.', es: 'Código incorrecto o caducado.' },
   disabled: { fr: 'Ce compte est désactivé.', en: 'This account is disabled.', es: 'Esta cuenta está desactivada.' },
-  use_lan: { fr: 'Connexion des techniciens : réglez l’adresse API de RustDesk sur l’adresse HTTPS donnée par Desktroo Remote (onglet Techniciens).',
-             en: 'Technician sign-in: set RustDesk’s API address to the HTTPS address given by Desktroo Remote (Technicians tab).',
-             es: 'Inicio de sesión de técnicos: configura la dirección API de RustDesk con la dirección HTTPS que da Desktroo Remote (pestaña Técnicos).' },
+  use_lan: { fr: 'Connexion des techniciens : dans RustDesk, Paramètres › Réseau, réglez « Serveur API » sur {url}, puis reconnectez-vous.',
+             en: 'Technician sign-in: in RustDesk, Settings › Network, set “API server” to {url}, then sign in again.',
+             es: 'Inicio de sesión de técnicos: en RustDesk, Ajustes › Red, configura «Servidor API» con {url} y vuelve a iniciar sesión.' },
 };
-const msg = (k) => (MSG[k] && (MSG[k][settings.lang] || MSG[k].fr)) || k;
+const msg = (k) => ((MSG[k] && (MSG[k][settings.lang] || MSG[k].fr)) || k)
+  .replace('{url}', settings.apiUrl || ({ fr: 'l’adresse HTTPS donnée par Desktroo Remote (onglet Techniciens)', en: 'the HTTPS address given by Desktroo Remote (Technicians tab)', es: 'la dirección HTTPS que da Desktroo Remote (pestaña Técnicos)' })[settings.lang] || 'https://…');
 
 function hashPw(pw, salt) { return crypto.scryptSync(String(pw), salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex'); }
 function setPassword(t, pw) { t.salt = crypto.randomBytes(16).toString('hex'); t.hash = hashPw(pw, t.salt); }
