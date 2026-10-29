@@ -731,7 +731,7 @@ Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
     'Register-ScheduledTask -TaskName \'Desktroo Remote - habillage\' -Action $act -Trigger @($t1, $t2) -User \'SYSTEM\' -RunLevel Highest -Force | Out-Null',
     '& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $brand \'habillage.ps1\')',
     '# Cache des icones de Windows : l\'icone des raccourcis s\'affiche tout de suite.',
-    '& (Join-Path $env:windir \'System32\ie4uinit.exe\') -show 2>$null',
+    'try { & (Join-Path $env:windir \'System32\\ie4uinit.exe\') -show 2>$null } catch { }',
     '',
   ].join('\r\n');
   brandCache = { v: brandVersion, text };
