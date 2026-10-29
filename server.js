@@ -568,6 +568,30 @@ async function streamClient(res, filename) {
 
 const psq = (s) => "'" + String(s).replace(/'/g, "''") + "'";
 
+// Le même script en .cmd, lancé par un double-clic (Windows ouvre les .ps1 dans le Bloc-notes). Fichier « polyglotte » :
+// cmd lit les lignes du début (« <# : » est pour lui une étiquette, ignorée), se relance en administrateur si besoin,
+// puis fait exécuter le fichier entier par PowerShell, pour qui tout ce début est un commentaire <# … #>.
+// Enregistré sans BOM (cmd ne le comprend pas) ; PowerShell le lit en UTF-8.
+function windowsCmd(ps) {
+  return [
+    '<# : Desktroo Remote',
+    '@echo off',
+    'title Desktroo Remote',
+    'net session >nul 2>&1',
+    'if errorlevel 1 (',
+    '  echo Autorisation administrateur demandee...',
+    '  powershell -NoProfile -Command "Start-Process -FilePath \'%~f0\' -Verb RunAs"',
+    '  exit /b',
+    ')',
+    'powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([ScriptBlock]::Create([IO.File]::ReadAllText(\'%~f0\')))"',
+    'echo.',
+    'pause',
+    'exit /b',
+    '#>',
+    ps,
+  ].join('\r\n');
+}
+
 // ── Habillage Desktroo Remote du client installé ───────────────────────────
 // Sans toucher aux programmes signés (rustdesk.exe, *.dll) : le client affiche « assets/logo_light.png » ou
 // « logo_dark.png » en bandeau s'il les trouve (flutter/lib/common.dart, loadLogo), et « assets/icon.png » comme icône
@@ -815,14 +839,16 @@ async function panelRoute(req, res, url, user) {
     log('serveur RustDesk redémarré par', user);
     return json(res, 200, { ok: true });
   }
-  if (p === '/deploy/windows.ps1' && m === 'GET') {
+  const dm2 = /^\/deploy\/windows\.(ps1|cmd)$/.exec(p);
+  if (dm2 && m === 'GET') {
     const tech = url.searchParams.get('tech') === '1';
     const cfg = tech ? techConfigString(readKey()) : configString(readKey());
     if (!cfg) throw fail(tech ? 'no_api_url' : 'not_ready', 409);
     const withPw = !tech && url.searchParams.get('password') === '1';
-    log(tech ? 'script du poste technicien téléchargé par' : 'script de déploiement Windows téléchargé par', user, withPw ? '(avec mot de passe)' : '');
-    return send(res, 200, '﻿' + windowsScript(cfg, withPw), 'text/plain; charset=utf-8',
-      { 'Content-Disposition': `attachment; filename="${tech ? 'desktroo-remote-technicien' : 'desktroo-remote'}.ps1"` });
+    log(tech ? 'script du poste technicien téléchargé par' : 'script de déploiement Windows téléchargé par', user, '(' + dm2[1] + ')', withPw ? '(avec mot de passe)' : '');
+    const name = (tech ? 'desktroo-remote-technicien' : 'desktroo-remote') + '.' + dm2[1];
+    const body = dm2[1] === 'cmd' ? windowsCmd(windowsScript(cfg, withPw)) : '﻿' + windowsScript(cfg, withPw);
+    return send(res, 200, body, 'application/octet-stream', { 'Content-Disposition': `attachment; filename="${name}"` });
   }
   if (p === '/download/windows' && m === 'GET') {
     const name = clientFilename(readKey());
