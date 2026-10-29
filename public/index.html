@@ -653,7 +653,8 @@ function renderState() {
   renderApiSteps();
   const ready = !!st.config;
   for (const id of ['dl-client', 'dl-ps', 'dl-ps1']) $(id).classList.toggle('disabled', !ready);
-  $('side-note').textContent = st.serverVersion ? T('footer', { v: st.serverVersion }) : '';
+  $('side-note').textContent = [st.version && st.version !== 'dev' ? 'Desktroo Remote ' + st.version.replace(/^v/, '') : '',
+    st.serverVersion ? T('footer', { v: st.serverVersion }) : ''].filter(Boolean).join(' · ');
 }
 async function loadState() {
   try { st = await api('api/state?lang=' + LANG); renderState(); } catch (e) { $('sub').textContent = e.message; }
