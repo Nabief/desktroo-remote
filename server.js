@@ -28,7 +28,8 @@ const KEY_FILE = path.join(DATA, 'id_ed25519.pub');
 const DB_FILE = path.join(DATA, 'db_v2.sqlite3');
 const VERSION = process.env.APP_VERSION || 'dev';
 const RD_SERVER_VERSION = process.env.RD_SERVER_VERSION || '';
-const PORTS = { nat: 21115, id: 21116, relay: 21117, api: 21114 };
+const PORTS = { nat: 21115, id: 21116, relay: 21117, api: 21114, lan: 21120 };
+const LAN_API_PORT = 8082;         // API complète (techniciens) : ouverte par Desktroo sur le port 21120, réseau local seulement
 const ONLINE_MS = 60_000;          // un client allumé se signale toutes les 15 s
 const MAX_DEVICES = 5000;
 const MAX_BODY = 16 * 1024;
@@ -104,6 +105,20 @@ function configString(key) {
   }
   return '';
 }
+// Configuration des postes techniciens : la même, avec l'adresse de l'API où ils se connectent (HTTPS par NPMplus,
+// ou le port 21120 du NAS sur le réseau local). Même précaution contre « -- ».
+function techConfigString(key) {
+  const api = settings.apiUrl || '';
+  if (!HOST || !key || !api) return '';
+  for (let n = 0; n < 64; n++) {
+    const json = `{"host":"${HOST}",${' '.repeat(n)}"key":"${key}","api":"${api}"}`;
+    const c = Buffer.from(json, 'utf8').toString('base64url').split('').reverse().join('');
+    if (!c.includes('--') && !c.startsWith('-') && !c.endsWith('-')) return c;
+  }
+  return '';
+}
+// Adresse d'API acceptée : https://nom[:port] (proxy), ou http://adresse-locale:21120 (réseau local).
+const API_URL_RE = /^(https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d{2,5})?|http:\/\/(?:10|127|192\.168|172\.(?:1[6-9]|2\d|3[01]))(?:\.\d{1,3}){1,3}:\d{2,5}|http:\/\/[a-z0-9-]{1,63}(?:\.local|\.lan|\.home)?:\d{2,5})$/;
 function clientFilename(key) {
   const c = configString(key);
   return c ? `rustdesk-licensed-${c}.exe` : '';
@@ -186,7 +201,7 @@ function deviceList() {
     const d = devices[id] || {}, p = peers.get(id) || {};
     if (d.hidden) continue;
     out.push({
-      id, label: d.label || '', note: d.note || '', hostname: d.hostname || '', os: d.os || '', username: d.username || '',
+      id, label: d.label || '', group: d.group || '', note: d.note || '', hostname: d.hostname || '', os: d.os || '', username: d.username || '',
       cpu: d.cpu || '', memory: d.memory || '', version: d.version || '',
       ip: d.lastIp || p.ip || '', registered: p.created || '', lastSeen: d.lastSeen || 0,
       online: !!d.lastSeen && now - d.lastSeen < ONLINE_MS, inSession: !!(d.conns && d.conns.length && now - d.lastSeen < ONLINE_MS),
@@ -257,14 +272,240 @@ function logRejectOnce(id, why) {
   log('signal refusé pour le poste', id, ':', why);
 }
 
-async function apiRoute(req, res) {
+// ── Techniciens : comptes, jetons, double authentification ─────────────────
+// Le client RustDesk se connecte par /api/login (flutter/lib/models/user_model.dart, common/widgets/login.dart) :
+//   {username, password, id, uuid, type:'account', deviceInfo} → {type:'access_token', access_token, user}
+//   avec code TOTP : → {type:'email_check', tfa_type:'tfa_check', secret, user}, puis
+//   {type:'email_code', tfaCode, secret, username} → {type:'access_token', …}
+// Ces routes ne sont servies que sur le port réservé au réseau local (8082 → 21120 du NAS) : un mot de passe ne
+// peut pas arriver en clair d'Internet. Depuis l'extérieur, on passe par un proxy HTTPS (NPMplus) vers ce port.
+const AUTH_FILE = path.join(DATA, 'auth.json');
+const SETTINGS_FILE = path.join(DATA, 'settings.json');
+const AB_DIR = path.join(DATA, 'ab');
+const TECH_RE = /^[a-z0-9][a-z0-9._-]{1,31}$/;
+const TOKEN_IDLE_MS = 90 * 86400_000;      // un jeton inutilisé 90 jours expire
+const MAX_TOKENS_PER_TECH = 20;
+const PW_MIN = 10;
+let auth = readJsonFile(AUTH_FILE, {});
+if (!auth || typeof auth !== 'object') auth = {};
+auth.techs = auth.techs && typeof auth.techs === 'object' ? auth.techs : {};
+auth.tokens = auth.tokens && typeof auth.tokens === 'object' ? auth.tokens : {};
+let settings = readJsonFile(SETTINGS_FILE, {});
+if (!settings || typeof settings !== 'object') settings = {};
+function saveAuth() { writeJsonFile(AUTH_FILE, auth); }
+function saveSettings() { writeJsonFile(SETTINGS_FILE, settings); }
+
+// Messages renvoyés au client RustDesk (il les affiche tels quels), dans la langue du panneau.
+const MSG = {
+  bad_login: { fr: 'Identifiant ou mot de passe incorrect.', en: 'Wrong username or password.', es: 'Usuario o contraseña incorrectos.' },
+  locked: { fr: 'Trop d’essais : réessayez dans quelques minutes.', en: 'Too many attempts: try again in a few minutes.', es: 'Demasiados intentos: inténtalo de nuevo en unos minutos.' },
+  bad_code: { fr: 'Code incorrect ou expiré.', en: 'Wrong or expired code.', es: 'Código incorrecto o caducado.' },
+  disabled: { fr: 'Ce compte est désactivé.', en: 'This account is disabled.', es: 'Esta cuenta está desactivada.' },
+  use_lan: { fr: 'Connexion des techniciens : réglez l’adresse API de RustDesk sur l’adresse HTTPS donnée par Desktroo Remote (onglet Techniciens).',
+             en: 'Technician sign-in: set RustDesk’s API address to the HTTPS address given by Desktroo Remote (Technicians tab).',
+             es: 'Inicio de sesión de técnicos: configura la dirección API de RustDesk con la dirección HTTPS que da Desktroo Remote (pestaña Técnicos).' },
+};
+const msg = (k) => (MSG[k] && (MSG[k][settings.lang] || MSG[k].fr)) || k;
+
+function hashPw(pw, salt) { return crypto.scryptSync(String(pw), salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex'); }
+function setPassword(t, pw) { t.salt = crypto.randomBytes(16).toString('hex'); t.hash = hashPw(pw, t.salt); }
+function checkPassword(t, pw) {
+  if (!t || !t.salt || !t.hash) { hashPw(pw, 'leurre'); return false; }   // même durée qu'un vrai essai
+  return safeEq(hashPw(pw, t.salt), t.hash);
+}
+const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+
+// TOTP (RFC 6238) : SHA-1, 6 chiffres, 30 s, une période d'écart tolérée, un code ne sert qu'une fois.
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function b32decode(s) {
+  let bits = '', out = [];
+  for (const c of String(s).toUpperCase().replace(/[^A-Z2-7]/g, '')) bits += B32.indexOf(c).toString(2).padStart(5, '0');
+  for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2));
+  return Buffer.from(out);
+}
+function b32encode(buf) {
+  let bits = '', out = '';
+  for (const b of buf) bits += b.toString(2).padStart(8, '0');
+  for (let i = 0; i < bits.length; i += 5) out += B32[parseInt(bits.slice(i, i + 5).padEnd(5, '0'), 2)];
+  return out;
+}
+function totpAt(secret, counter) {
+  const c = Buffer.alloc(8); c.writeBigUInt64BE(BigInt(counter));
+  const h = crypto.createHmac('sha1', b32decode(secret)).update(c).digest();
+  const o = h[h.length - 1] & 15;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1_000_000).padStart(6, '0');
+}
+// Rend le compteur accepté (pour interdire sa réutilisation), ou -1.
+function totpCheck(secret, code, lastCounter) {
+  code = String(code || '').replace(/\s/g, '');
+  if (!/^\d{6}$/.test(code)) return -1;
+  const now = Math.floor(Date.now() / 30_000);
+  for (const c of [now, now - 1, now + 1]) if (c > (lastCounter || 0) && safeEq(totpAt(secret, c), code)) return c;
+  return -1;
+}
+
+// Essais ratés : 5 par compte ou par adresse en 15 min, puis 15 min de blocage.
+const fails = new Map();
+function isLocked(k) { const f = fails.get(k); return !!(f && f.until > Date.now()); }
+function addFail(k) {
+  const now = Date.now();
+  let f = fails.get(k);
+  if (!f || now - f.first > 15 * 60_000) f = { n: 0, first: now, until: 0 };
+  if (++f.n >= 5) f.until = now + 15 * 60_000;
+  fails.set(k, f);
+}
+setInterval(() => { const now = Date.now(); for (const [k, f] of fails) if (f.until < now && now - f.first > 15 * 60_000) fails.delete(k); }, 300_000).unref();
+
+const challenges = new Map();   // secret de l'étape « code » -> {tech, exp, tries}
+function userPayload(name) {
+  const t = auth.techs[name] || {};
+  return { name, display_name: t.display || name, email: '', note: '', status: 1, is_admin: false };
+}
+function issueToken(name, b, ip) {
+  const token = 'dtr_' + crypto.randomBytes(32).toString('base64url');
+  const di = b.deviceInfo && typeof b.deviceInfo === 'object' ? b.deviceInfo : {};
+  auth.tokens[sha(token)] = { tech: name, created: Date.now(), lastUsed: Date.now(), ip,
+    device: { id: clip(b.id, 32), os: clip(di.os, 40), name: clip(di.name, 80) } };
+  const mine = Object.entries(auth.tokens).filter(([, v]) => v.tech === name).sort((a, z) => a[1].lastUsed - z[1].lastUsed);
+  while (mine.length > MAX_TOKENS_PER_TECH) delete auth.tokens[mine.shift()[0]];
+  auth.techs[name].lastLogin = Date.now();
+  saveAuth();
+  return token;
+}
+let tokenTouch = 0;
+function techOf(req) {
+  const m = /^Bearer\s+(dtr_[A-Za-z0-9_-]{20,80})$/.exec(String(req.headers.authorization || ''));
+  if (!m) return null;
+  const k = sha(m[1]), t = auth.tokens[k];
+  if (!t) return null;
+  const tech = auth.techs[t.tech];
+  if (!tech || tech.disabled || Date.now() - t.lastUsed > TOKEN_IDLE_MS) { delete auth.tokens[k]; saveAuth(); return null; }
+  t.lastUsed = Date.now();
+  if (Date.now() - tokenTouch > 60_000) { tokenTouch = Date.now(); saveAuth(); }
+  return { name: t.tech, key: k };
+}
+function revokeTokens(name) {
+  let n = 0;
+  for (const [k, v] of Object.entries(auth.tokens)) if (v.tech === name) { delete auth.tokens[k]; n++; }
+  saveAuth();
+  return n;
+}
+
+async function login(req, res, ip) {
+  const b = await readJson(req);
+  const type = String(b.type || 'account');
+  if (type === 'email_code' || type === 'tfa_code') {          // 2e étape : code TOTP
+    const ch = challenges.get(String(b.secret || ''));
+    if (!ch || ch.exp < Date.now() || isLocked('u:' + ch.tech)) return json(res, 401, { error: msg(ch && isLocked('u:' + ch.tech) ? 'locked' : 'bad_code') });
+    const t = auth.techs[ch.tech];
+    const c = t && t.totp ? totpCheck(t.totp, b.tfaCode || b.verificationCode, t.totpLast) : -1;
+    if (c < 0) {
+      addFail('u:' + ch.tech); addFail('ip:' + ip);
+      if (++ch.tries >= 3) challenges.delete(String(b.secret));
+      log('code à usage unique refusé pour', ch.tech, 'depuis', ip);
+      return json(res, 401, { error: msg('bad_code') });
+    }
+    challenges.delete(String(b.secret));
+    t.totpLast = c;
+    log('technicien connecté :', ch.tech, 'depuis', ip, '(avec code)');
+    return json(res, 200, { type: 'access_token', access_token: issueToken(ch.tech, b, ip), user: userPayload(ch.tech) });
+  }
+  const name = String(b.username || '').trim().toLowerCase();
+  if (isLocked('u:' + name) || isLocked('ip:' + ip)) return json(res, 429, { error: msg('locked') });
+  const t = TECH_RE.test(name) ? auth.techs[name] : null;
+  if (!checkPassword(t, String(b.password || '').slice(0, 256))) {
+    addFail('u:' + name); addFail('ip:' + ip);
+    log('connexion refusée pour', JSON.stringify(name.slice(0, 32)), 'depuis', ip);
+    return json(res, 401, { error: msg('bad_login') });
+  }
+  if (t.disabled) return json(res, 403, { error: msg('disabled') });
+  if (t.totp) {
+    const secret = crypto.randomBytes(24).toString('base64url');
+    challenges.set(secret, { tech: name, exp: Date.now() + 5 * 60_000, tries: 0 });
+    if (challenges.size > 500) challenges.delete(challenges.keys().next().value);
+    return json(res, 200, { type: 'email_check', tfa_type: 'tfa_check', secret, user: userPayload(name) });
+  }
+  log('technicien connecté :', name, 'depuis', ip);
+  return json(res, 200, { type: 'access_token', access_token: issueToken(name, b, ip), user: userPayload(name) });
+}
+
+// Postes vus par les techniciens (onglet « Appareils accessibles » du client) : tous les postes connus du serveur,
+// rangés par groupe (le client, le site…) choisi dans le panneau.
+function accessiblePeers() {
+  return deviceList().map((d) => ({
+    id: d.id, status: 1, user: '', user_name: '', device_group_name: d.group || '', note: d.note || '',
+    info: { device_name: d.label || d.hostname || d.id, os: d.os || '', username: d.username || '' },
+  }));
+}
+function page(url, list) {
+  const cur = Math.max(1, parseInt(url.searchParams.get('current') || '1', 10) || 1);
+  const size = Math.min(500, Math.max(1, parseInt(url.searchParams.get('pageSize') || '100', 10) || 100));
+  return { total: list.length, data: list.slice((cur - 1) * size, cur * size) };
+}
+
+// Carnet d'adresses personnel (format « ancien » du client : une chaîne JSON opaque par technicien).
+const abFile = (name) => path.join(AB_DIR, name + '.json');
+
+const ipOf = (req, full) => {
+  const ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  if (!full) return ip;
+  // Port réservé au réseau local : derrière NPMplus, l'adresse du technicien est dans X-Forwarded-For.
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean).pop();
+  return xff && /^[0-9a-fA-F.:]{3,45}$/.test(xff) ? xff.replace(/^::ffff:/, '') : ip;
+};
+
+// full = port réservé au réseau local (techniciens et postes) ; sinon port public (postes seulement).
+async function apiRoute(req, res, full) {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname.replace(/\/+$/, '');
-  const ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
-  if (req.method === 'GET' && (p === '' || p === '/healthz')) return send(res, 200, 'Desktroo Remote');
-  if (req.method !== 'POST') return json(res, 404, { error: 'Not found' });
+  const m = req.method;
+  const ip = ipOf(req, full);
+  if (m === 'GET' && (p === '' || p === '/healthz')) return send(res, 200, 'Desktroo Remote');
   if (limited(ip)) return json(res, 429, { error: 'Too many requests' });
 
+  if (full) {
+    if (p === '/api/login-options') return json(res, 200, []);
+    if (p === '/api/login' && m === 'POST') return login(req, res, ip);
+    const tech = techOf(req);
+    if (p === '/api/logout' && m === 'POST') {
+      if (tech) { delete auth.tokens[tech.key]; saveAuth(); log('technicien déconnecté :', tech.name); }
+      return json(res, 200, {});
+    }
+    if (/^\/api\/(currentUser|ab|ab\/.*|users|peers|device-group\/accessible)$/.test(p)) {
+      if (!tech) return json(res, 401, { error: 'Unauthorized' });
+      if (p === '/api/currentUser') return json(res, 200, userPayload(tech.name));
+      if (p === '/api/users' && m === 'GET') {
+        return json(res, 200, page(url, Object.keys(auth.techs).filter((n) => !auth.techs[n].disabled).sort().map(userPayload)));
+      }
+      if (p === '/api/peers' && m === 'GET') return json(res, 200, page(url, accessiblePeers()));
+      if (p === '/api/device-group/accessible' && m === 'GET') {
+        const groups = [...new Set(deviceList().map((d) => d.group).filter(Boolean))].sort().map((name) => ({ name }));
+        return json(res, 200, page(url, groups));
+      }
+      if (p === '/api/ab' && m === 'GET') {
+        const ab = readJsonFile(abFile(tech.name), null);
+        return json(res, 200, { data: ab && typeof ab.data === 'string' ? ab.data : JSON.stringify({ tags: [], peers: [], tag_colors: '{}' }) });
+      }
+      if (p === '/api/ab' && m === 'POST') {
+        const b = await readJson(req, 512 * 1024);
+        if (typeof b.data !== 'string') throw fail('bad_request');
+        try { JSON.parse(b.data); } catch (_) { throw fail('bad_request'); }
+        fs.mkdirSync(AB_DIR, { recursive: true });
+        writeJsonFile(abFile(tech.name), { data: b.data, at: Date.now() });
+        return json(res, 200, {});
+      }
+      // /api/ab/settings, /api/ab/personal… (carnets partagés de RustDesk Server Pro) : 404 → le client passe au
+      // carnet « ancien », servi ci-dessus.
+      return json(res, 404, { error: 'Not found' });
+    }
+  } else if (p === '/api/login-options') {
+    return json(res, 200, []);
+  } else if (/^\/api\/(login|logout|currentUser|ab|users|peers|device-group)(\/|$)/.test(p)) {
+    // Port public : pas de connexion des techniciens (le mot de passe circulerait en clair sur Internet).
+    return json(res, 403, { error: msg('use_lan') });
+  }
+
+  if (m !== 'POST') return json(res, 404, { error: 'Not found' });
   if (p === '/api/sysinfo_ver') return send(res, 200, SYSINFO_VER);
   if (p === '/api/heartbeat' || p === '/api/sysinfo') {
     const b = await readJson(req);
@@ -397,6 +638,8 @@ function state() {
     version: VERSION, serverVersion: RD_SERVER_VERSION,
     host: HOST, hostOk: HOST_RE.test(HOST), key, config: cfg, api: apiUrl(), ports: PORTS,
     filename: clientFilename(key),
+    apiUrl: settings.apiUrl || '', techConfig: techConfigString(key), lanPort: PORTS.lan,
+    techs: Object.keys(auth.techs).length,
     procs: { hbbs: procState(procs.hbbs), hbbr: procState(procs.hbbr) },
     sqlite: !!DatabaseSync,
     counts: { total: list.length, online: list.filter((d) => d.online).length, reporting: list.filter((d) => d.reporting).length },
@@ -405,13 +648,90 @@ function state() {
 
 async function panelRoute(req, res, url, user) {
   const p = url.pathname, m = req.method;
-  if (p === '/api/state' && m === 'GET') return json(res, 200, state());
+  if (p === '/api/state' && m === 'GET') {
+    const l = url.searchParams.get('lang');   // langue du panneau : celle des messages envoyés au client RustDesk
+    if (['fr', 'en', 'es'].includes(l) && settings.lang !== l) { settings.lang = l; saveSettings(); }
+    return json(res, 200, state());
+  }
+  if (p === '/api/settings' && m === 'PUT') {
+    const b = await readJson(req);
+    const u = String(b.apiUrl || '').trim().replace(/\/+$/, '').toLowerCase();
+    if (u && !API_URL_RE.test(u)) throw fail('bad_api_url');
+    settings.apiUrl = u; saveSettings();
+    log('adresse de l’API des techniciens :', u || '(aucune)', 'par', user);
+    return json(res, 200, { ok: true });
+  }
+  if (p === '/api/techs' && m === 'GET') {
+    const sessions = {};
+    for (const t of Object.values(auth.tokens)) if (Date.now() - t.lastUsed <= TOKEN_IDLE_MS) sessions[t.tech] = (sessions[t.tech] || 0) + 1;
+    return json(res, 200, Object.keys(auth.techs).sort().map((n) => {
+      const t = auth.techs[n];
+      return { name: n, display: t.display || '', totp: !!t.totp, disabled: !!t.disabled, created: t.created || 0,
+               lastLogin: t.lastLogin || 0, sessions: sessions[n] || 0 };
+    }));
+  }
+  if (p === '/api/techs' && m === 'POST') {
+    const b = await readJson(req);
+    const name = String(b.name || '').trim().toLowerCase();
+    if (!TECH_RE.test(name)) throw fail('bad_name');
+    if (auth.techs[name]) throw fail('name_taken', 409);
+    if (String(b.password || '').length < PW_MIN || String(b.password).length > 256) throw fail('weak_password');
+    const t = { display: clip(b.display, 60), created: Date.now(), createdBy: user };
+    setPassword(t, b.password);
+    auth.techs[name] = t; saveAuth();
+    log('technicien', name, 'créé par', user);
+    return json(res, 200, { ok: true });
+  }
+  const tm = /^\/api\/techs\/([a-z0-9][a-z0-9._-]{1,31})(\/totp|\/totp\/confirm|\/logout)?$/.exec(p);
+  if (tm) {
+    const name = tm[1], t = auth.techs[name], sub = tm[2] || '';
+    if (!t) throw fail('not_found', 404);
+    if (!sub && m === 'PUT') {
+      const b = await readJson(req);
+      if ('display' in b) t.display = clip(b.display, 60);
+      if ('password' in b) {
+        if (String(b.password || '').length < PW_MIN || String(b.password).length > 256) throw fail('weak_password');
+        setPassword(t, b.password); revokeTokens(name);
+      }
+      if ('disabled' in b) { t.disabled = !!b.disabled; if (t.disabled) revokeTokens(name); }
+      saveAuth();
+      log('technicien', name, 'modifié par', user);
+      return json(res, 200, { ok: true });
+    }
+    if (!sub && m === 'DELETE') {
+      revokeTokens(name); delete auth.techs[name]; saveAuth();
+      try { fs.unlinkSync(abFile(name)); } catch (_) {}
+      log('technicien', name, 'supprimé par', user);
+      return json(res, 200, { ok: true });
+    }
+    if (sub === '/logout' && m === 'POST') { const n = revokeTokens(name); log('sessions de', name, 'fermées par', user); return json(res, 200, { ok: true, closed: n }); }
+    if (sub === '/totp' && m === 'POST') {       // nouveau secret, actif seulement après un premier code juste
+      t.totpPending = b32encode(crypto.randomBytes(20)); saveAuth();
+      const label = encodeURIComponent('Desktroo Remote:' + name);
+      return json(res, 200, { secret: t.totpPending, uri: `otpauth://totp/${label}?secret=${t.totpPending}&issuer=Desktroo%20Remote&digits=6&period=30` });
+    }
+    if (sub === '/totp/confirm' && m === 'POST') {
+      const b = await readJson(req);
+      if (!t.totpPending) throw fail('bad_code');
+      const c = totpCheck(t.totpPending, b.code, 0);
+      if (c < 0) throw fail('bad_code');
+      t.totp = t.totpPending; t.totpLast = c; delete t.totpPending; saveAuth();
+      log('double authentification activée pour', name, 'par', user);
+      return json(res, 200, { ok: true });
+    }
+    if (sub === '/totp' && m === 'DELETE') {
+      delete t.totp; delete t.totpPending; delete t.totpLast; saveAuth();
+      log('double authentification retirée pour', name, 'par', user);
+      return json(res, 200, { ok: true });
+    }
+  }
   if (p === '/api/devices' && m === 'GET') return json(res, 200, deviceList());
   const dm = /^\/api\/devices\/([A-Za-z0-9_-]{6,32})$/.exec(p);
   if (dm && m === 'PUT') {
     const b = await readJson(req);
     const d = devices[dm[1]] || (devices[dm[1]] = {});
     if ('label' in b) d.label = clip(b.label, 60);
+    if ('group' in b) d.group = clip(b.group, 40);
     if ('note' in b) d.note = clip(b.note, 300);
     dirty = true; save(true);
     log('poste', dm[1], 'renommé ou annoté par', user);
@@ -433,12 +753,13 @@ async function panelRoute(req, res, url, user) {
     return json(res, 200, { ok: true });
   }
   if (p === '/deploy/windows.ps1' && m === 'GET') {
-    const cfg = configString(readKey());
-    if (!cfg) throw fail('not_ready', 409);
-    const withPw = url.searchParams.get('password') === '1';
-    log('script de déploiement Windows téléchargé par', user, withPw ? '(avec mot de passe)' : '');
+    const tech = url.searchParams.get('tech') === '1';
+    const cfg = tech ? techConfigString(readKey()) : configString(readKey());
+    if (!cfg) throw fail(tech ? 'no_api_url' : 'not_ready', 409);
+    const withPw = !tech && url.searchParams.get('password') === '1';
+    log(tech ? 'script du poste technicien téléchargé par' : 'script de déploiement Windows téléchargé par', user, withPw ? '(avec mot de passe)' : '');
     return send(res, 200, '﻿' + windowsScript(cfg, withPw), 'text/plain; charset=utf-8',
-      { 'Content-Disposition': 'attachment; filename="desktroo-remote.ps1"' });
+      { 'Content-Disposition': `attachment; filename="${tech ? 'desktroo-remote-technicien' : 'desktroo-remote'}.ps1"` });
   }
   if (p === '/download/windows' && m === 'GET') {
     const name = clientFilename(readKey());
@@ -472,21 +793,25 @@ const panel = http.createServer(async (req, res) => {
   try { await panelRoute(req, res, url, user); } catch (e) { onError(res, e); }
 });
 const api = http.createServer(async (req, res) => {
-  try { await apiRoute(req, res); } catch (e) { onError(res, e); }
+  try { await apiRoute(req, res, false); } catch (e) { onError(res, e); }
 });
-api.headersTimeout = 10_000; api.requestTimeout = 15_000;
+const lanApi = http.createServer(async (req, res) => {
+  try { await apiRoute(req, res, true); } catch (e) { onError(res, e); }
+});
+for (const s of [api, lanApi]) { s.headersTimeout = 10_000; s.requestTimeout = 15_000; }
 
 if (HOST && !HOST_RE.test(HOST)) log('adresse publique invalide :', HOST);
 supervise('hbbs', [...(HOST ? ['-r', `${HOST}:${PORTS.relay}`] : []), '-k', '_']);
 supervise('hbbr', ['-k', '_']);
 panel.listen(PORT, () => log('Desktroo Remote', VERSION, 'prêt sur le port', PORT, SECRET ? '' : '(secret absent : le panneau refusera tout)'));
-api.listen(API_PORT, () => log('API des clients RustDesk sur le port', API_PORT));
+api.listen(API_PORT, () => log('API des postes sur le port', API_PORT));
+lanApi.listen(LAN_API_PORT, () => log('API des techniciens (réseau local) sur le port', LAN_API_PORT));
 
 function shutdown() {
   log('arrêt demandé');
   save(true);
   for (const p of Object.values(procs)) { p.stopping = true; if (p.child) p.child.kill('SIGTERM'); }
-  api.close(); panel.close();
+  api.close(); lanApi.close(); panel.close();
   setTimeout(() => process.exit(0), 1500).unref();
 }
 process.on('SIGTERM', shutdown);

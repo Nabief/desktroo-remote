@@ -29,7 +29,8 @@ COPY server.js ./
 COPY public ./public
 ENV NODE_ENV=production DATA_DIR=/data RD_BIN_DIR=/usr/local/bin \
     RD_SERVER_VERSION=${RUSTDESK_SERVER_VERSION} APP_VERSION=${APP_VERSION}
-# 8080 : panneau (derrière Desktroo) · 8081 : API des clients (port 21114 du NAS) · 21115-21117 : serveur RustDesk
-EXPOSE 8080 8081 21115 21116 21116/udp 21117
+# 8080 : panneau (derrière Desktroo) · 8081 : API des postes (port 21114 du NAS, public)
+# 8082 : API des techniciens (port 21120 du NAS, réseau local seulement) · 21115-21117 : serveur RustDesk
+EXPOSE 8080 8081 8082 21115 21116 21116/udp 21117
 # Desktroo Apps lance le conteneur sous l'utilisateur 568 (apps de TrueNAS), en lecture seule hors de /data et /tmp.
 CMD ["node", "--disable-warning=ExperimentalWarning", "server.js"]

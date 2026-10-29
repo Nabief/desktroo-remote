@@ -13,6 +13,15 @@ Il fait tourner le serveur RustDesk officiel (hbbs, hbbr ; AGPL-3.0, non modifi�
 - **API des postes** (port 8081, ouvert par Desktroo sur le port 21114 du NAS) : un client RustDesk réglé sur ce serveur
   y envoie de lui-même sa présence (`/api/heartbeat`, toutes les 15 s) et sa fiche (`/api/sysinfo`). Un signal n'est
   retenu que si le poste est dans la base de hbbs avec le même identifiant matériel (uuid). Rien d'autre n'y est servi.
+- **Techniciens** (port 8082, ouvert par Desktroo sur le port 21120 du NAS, **réseau local seulement**) : l'API complète
+  que le client RustDesk utilise une fois connecté à un compte — `/api/login` (mot de passe haché scrypt, code TOTP
+  facultatif sans réutilisation, 5 essais ratés par compte ou adresse → 15 min de blocage), `/api/currentUser`,
+  `/api/logout`, `/api/peers`, `/api/users`, `/api/device-group/accessible` (onglet « Appareils accessibles » : tous les
+  postes, rangés par groupe), `/api/ab` (carnet d'adresses personnel, format « ancien »). Depuis Internet, on y accède
+  en HTTPS par un proxy (NPMplus) : le mot de passe ne circule jamais en clair. Le port public 21114 refuse ces routes.
+  Jetons : `dtr_…`, gardés hachés (SHA-256), expirés après 90 jours sans usage, fermés au changement de mot de passe ou
+  à la désactivation du compte. Comptes et jetons : `/data/auth.json` ; carnets : `/data/ab/` ; réglages :
+  `/data/settings.json` (adresse de l'API des techniciens, langue des messages).
 - **Client Windows préconfiguré** : le programme officiel de la dernière version, relayé depuis GitHub sous le nom
   `rustdesk-licensed-<config>.exe` ; RustDesk lit sa configuration dans son nom (format de `custom_server.rs` :
   JSON `{host, key, api, relay}` en base64 « URL », renversé). Fonctionne quelle que soit la clé.

@@ -59,6 +59,10 @@
   dialog::backdrop { background: rgba(0,0,0,.45); }
   dialog textarea { width: 100%; min-height: 80px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--glass-border); background: var(--surface-2); color: var(--text); font: 14px var(--font-body); resize: vertical; }
   dialog h2 { margin: 0 0 4px; }
+  .addgrid { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 8px; margin-top: 6px; }
+  @media (max-width: 760px) { .addgrid { grid-template-columns: 1fr; } }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--glass-border); font-size: 11.5px; margin-right: 6px; vertical-align: 1px; }
+  .err { color: var(--danger); } .okc { color: var(--success); }
   dialog .lbl { margin: 16px 0 6px; }
   @media (max-width: 620px) { .devs .btns { width: 100%; justify-content: flex-start; margin-left: 0; } }
 </style>
@@ -70,6 +74,7 @@
     <button class="dk-nav active" data-pane="status"><span class="dk-nav-ic">◉</span><span class="dk-nav-name" data-t="nav_status"></span></button>
     <button class="dk-nav" data-pane="devices"><span class="dk-nav-ic">▣</span><span class="dk-nav-name" data-t="nav_devices"></span><span class="dk-count" id="count"></span></button>
     <button class="dk-nav" data-pane="deploy"><span class="dk-nav-ic">⇩</span><span class="dk-nav-name" data-t="nav_deploy"></span></button>
+    <button class="dk-nav" data-pane="techs"><span class="dk-nav-ic">☺</span><span class="dk-nav-name" data-t="nav_techs"></span><span class="dk-count" id="tcount"></span></button>
     <div class="dk-side-fill"></div>
     <div class="dk-side-sep"></div>
     <button class="dk-nav" data-pane="logs"><span class="dk-nav-ic">≡</span><span class="dk-nav-name" data-t="nav_logs"></span></button>
@@ -150,6 +155,40 @@
         </div>
       </div>
 
+      <!-- Techniciens -->
+      <div class="pane" id="pane-techs">
+        <div class="card">
+          <h2 data-t="api_t"></h2>
+          <p class="dim" data-t="api_d"></p>
+          <ol class="steps" id="api-steps"></ol>
+          <div class="lbl" data-t="api_url"></div>
+          <div class="field"><input class="dk-input mono" id="api-url" spellcheck="false" autocomplete="off"><button class="dk-btn primary" id="api-save" data-t="save"></button></div>
+          <p class="dim" id="api-lan"></p>
+          <div class="dim" id="api-msg"></div>
+        </div>
+        <div class="card" id="tech-setup">
+          <h2 data-t="tp_t"></h2>
+          <p class="dim" data-t="tp_d"></p>
+          <div class="actions"><a class="dk-btn primary" id="dl-tech" href="deploy/windows.ps1?tech=1" data-t="tp_btn"></a></div>
+          <div class="lbl" data-t="tp_cfg"></div>
+          <div class="field"><div class="val mono" id="v-tcfg">…</div><button class="dk-btn" data-copy="v-tcfg" data-t="copy"></button></div>
+          <ol class="steps" id="tp-steps"></ol>
+        </div>
+        <div class="card">
+          <h2 data-t="acc_t"></h2>
+          <p class="dim" data-t="acc_d"></p>
+          <ul class="devs" id="techs"></ul>
+          <div class="empty" id="techs-empty" data-t="acc_empty" style="display:none"></div>
+          <div class="lbl" data-t="acc_add"></div>
+          <div class="addgrid">
+            <input class="dk-input" id="t-name" maxlength="32" autocomplete="off" spellcheck="false">
+            <input class="dk-input" id="t-display" maxlength="60" autocomplete="off">
+            <div class="field" style="margin:0"><input class="dk-input mono" id="t-pw" maxlength="256" autocomplete="new-password" spellcheck="false"><button class="dk-btn" id="t-gen" data-t="gen"></button></div>
+          </div>
+          <div class="actions"><button class="dk-btn primary" id="t-add" data-t="acc_add_btn"></button><span class="dim" id="t-msg"></span></div>
+        </div>
+      </div>
+
       <!-- Journal -->
       <div class="pane" id="pane-logs">
         <div class="actions" style="margin-top:0">
@@ -168,9 +207,33 @@
   <div class="dim mono" id="edit-id"></div>
   <div class="lbl" data-t="edit_label"></div>
   <input class="dk-input" id="edit-label" maxlength="60">
+  <div class="lbl" data-t="edit_group"></div>
+  <input class="dk-input" id="edit-group" maxlength="40" list="groups">
+  <datalist id="groups"></datalist>
   <div class="lbl" data-t="edit_note"></div>
   <textarea id="edit-note" maxlength="300"></textarea>
   <div class="actions"><button class="dk-btn primary" id="edit-save" data-t="save"></button><button class="dk-btn" id="edit-cancel" data-t="cancel"></button></div>
+</dialog>
+
+<dialog id="pwd">
+  <h2 data-t="pw_t"></h2>
+  <div class="dim mono" id="pwd-name"></div>
+  <div class="lbl" data-t="pw_new"></div>
+  <div class="field" style="margin:0"><input class="dk-input mono" id="pwd-val" maxlength="256" autocomplete="new-password" spellcheck="false"><button class="dk-btn" id="pwd-gen" data-t="gen"></button></div>
+  <p class="dim" data-t="pw_d"></p>
+  <div class="actions"><button class="dk-btn primary" id="pwd-save" data-t="save"></button><button class="dk-btn" data-close data-t="cancel"></button></div>
+</dialog>
+
+<dialog id="totp">
+  <h2 data-t="tf_t"></h2>
+  <p class="dim" data-t="tf_d"></p>
+  <div class="lbl" data-t="tf_key"></div>
+  <div class="field" style="margin:0"><div class="val mono" id="totp-secret"></div><button class="dk-btn" data-copy="totp-secret" data-t="copy"></button></div>
+  <p class="dim"><a id="totp-uri" href="#" data-t="tf_link"></a></p>
+  <div class="lbl" data-t="tf_code"></div>
+  <input class="dk-input mono" id="totp-code" maxlength="6" inputmode="numeric" autocomplete="one-time-code" style="max-width:160px">
+  <div class="dim err" id="totp-msg"></div>
+  <div class="actions"><button class="dk-btn primary" id="totp-ok" data-t="tf_ok"></button><button class="dk-btn" data-close data-t="cancel"></button></div>
 </dialog>
 
 <script>
@@ -224,6 +287,36 @@ const I18N = {
     err_server_error: 'Erreur du serveur.', err_net: 'Le serveur ne répond pas.',
     ago_now: 'à l’instant', ago_m: 'il y a {n} min', ago_h: 'il y a {n} h', ago_d: 'il y a {n} j',
     footer: 'Moteur RustDesk {v} (AGPL-3.0)',
+    nas_ip: 'adresse-IP-du-NAS', nav_techs: 'Techniciens', t_techs: 'Techniciens', s_techs: 'Les comptes qui voient vos postes dans RustDesk et s’y connectent.',
+    edit_group: 'Groupe (client, site…) : les postes sont rangés ainsi dans RustDesk',
+    api_t: 'Adresse de connexion des techniciens',
+    api_d: 'Les techniciens se connectent à leur compte depuis RustDesk par une adresse HTTPS, pour que leur mot de passe ne circule jamais en clair. Elle passe par NPMplus (Desktroo Apps) :',
+    api_s1: 'Dans NPMplus, créez un hôte proxy pour <b>{host}</b> vers <b>http://{ip}:21120</b>, avec un certificat Let’s Encrypt.',
+    api_s2: 'Vérifiez que le port 443 de votre box arrive bien à NPMplus.',
+    api_s3: 'Indiquez ci-dessous <b>https://{host}</b> et enregistrez.',
+    api_url: 'Adresse de l’API pour les techniciens', api_lan: 'Sur le réseau local seulement, vous pouvez aussi indiquer {url} (sans HTTPS, à ne jamais ouvrir sur Internet).',
+    api_saved: 'Enregistré.', err_bad_api_url: 'Adresse invalide : https://nom-de-domaine, ou http://adresse-locale:21120.',
+    tp_t: 'Poste technicien (Windows)', tp_d: 'Installe RustDesk et le règle sur votre serveur avec l’adresse de connexion ci-dessus. Ensuite, dans RustDesk, connectez-vous avec votre compte technicien : l’onglet « Appareils accessibles » liste vos postes, avec leur présence en ligne, et un double-clic ouvre la session.',
+    tp_btn: 'Télécharger le script du poste technicien', tp_cfg: 'Configuration du poste technicien (autres systèmes)',
+    tp_s1: 'Lancez le script en administrateur (ou, sur Mac et Linux, importez la configuration : Paramètres › Réseau › Importer).',
+    tp_s2: 'Dans RustDesk, cliquez sur l’icône de compte, puis <b>Se connecter</b>, avec l’identifiant et le mot de passe du technicien.',
+    tp_s3: 'Ouvrez l’onglet <b>Appareils accessibles</b> : vos postes y sont, rangés par groupe.',
+    tp_need_api: 'Indiquez d’abord l’adresse de connexion des techniciens.',
+    acc_t: 'Comptes techniciens', acc_d: 'Chaque technicien voit tous les postes du serveur. La double authentification (code d’une application comme Authenticator) est vivement conseillée.',
+    acc_empty: 'Aucun technicien pour l’instant.', acc_add: 'Ajouter un technicien', acc_add_btn: 'Créer le compte',
+    ph_name: 'identifiant (ex. fabien)', ph_display: 'nom affiché', ph_pw: 'mot de passe (10 caractères au moins)', gen: 'Générer',
+    acc_created: 'Compte créé. Notez le mot de passe : il ne sera plus affiché.',
+    t_last: 'dernière connexion {d}', t_never: 'jamais connecté', t_sessions: '{n} session(s) ouverte(s)', t_2fa: 'Double authentification', t_off: 'Désactivé',
+    act_pw: 'Mot de passe', act_2fa_on: 'Activer le code', act_2fa_off: 'Retirer le code', act_disable: 'Désactiver', act_enable: 'Réactiver',
+    act_logout: 'Fermer les sessions', act_del: 'Supprimer',
+    del_q: 'Supprimer le compte {n} ? Ses sessions sont fermées et son carnet d’adresses effacé.',
+    tf_off_q: 'Retirer la double authentification du compte {n} ?', logout_ok: 'Sessions fermées.',
+    pw_t: 'Changer le mot de passe', pw_new: 'Nouveau mot de passe', pw_d: '10 caractères au moins. Les sessions ouvertes de ce technicien seront fermées.',
+    tf_t: 'Double authentification', tf_d: 'Ajoutez cette clé dans une application de codes (Authenticator, Google Authenticator, Bitwarden…), puis saisissez le code affiché pour l’activer. RustDesk demandera ce code à chaque connexion.',
+    tf_key: 'Clé à saisir dans l’application', tf_link: 'Ou ouvrez ce lien sur un téléphone équipé d’une application de codes', tf_code: 'Code à 6 chiffres', tf_ok: 'Activer',
+    err_bad_name: 'Identifiant : 2 à 32 caractères, lettres minuscules, chiffres, point, tiret.', err_name_taken: 'Cet identifiant existe déjà.',
+    err_weak_password: 'Mot de passe trop court (10 caractères au moins).', err_bad_code: 'Code incorrect.', err_not_found: 'Introuvable.',
+    err_no_api_url: 'Indiquez d’abord l’adresse de connexion des techniciens.',
   },
   en: {
     nav_status: 'Status', nav_devices: 'Devices', nav_deploy: 'Set up a device', nav_logs: 'Log',
@@ -273,6 +366,36 @@ const I18N = {
     err_server_error: 'Server error.', err_net: 'The server is not responding.',
     ago_now: 'just now', ago_m: '{n} min ago', ago_h: '{n} h ago', ago_d: '{n} d ago',
     footer: 'RustDesk engine {v} (AGPL-3.0)',
+    nas_ip: 'NAS-IP-address', nav_techs: 'Technicians', t_techs: 'Technicians', s_techs: 'Accounts that see your devices in RustDesk and connect to them.',
+    edit_group: 'Group (customer, site…): devices are sorted this way in RustDesk',
+    api_t: 'Technician sign-in address',
+    api_d: 'Technicians sign in to their account from RustDesk through an HTTPS address, so their password never travels in clear text. It goes through NPMplus (Desktroo Apps):',
+    api_s1: 'In NPMplus, create a proxy host for <b>{host}</b> to <b>http://{ip}:21120</b>, with a Let’s Encrypt certificate.',
+    api_s2: 'Check that port 443 of your router reaches NPMplus.',
+    api_s3: 'Enter <b>https://{host}</b> below and save.',
+    api_url: 'API address for technicians', api_lan: 'On the local network only, you can also enter {url} (no HTTPS, never open it to the Internet).',
+    api_saved: 'Saved.', err_bad_api_url: 'Invalid address: https://domain-name, or http://local-address:21120.',
+    tp_t: 'Technician computer (Windows)', tp_d: 'Installs RustDesk and sets it to your server with the sign-in address above. Then, in RustDesk, sign in with your technician account: the “Accessible devices” tab lists your devices with their online presence, and a double-click opens the session.',
+    tp_btn: 'Download the technician script', tp_cfg: 'Technician configuration (other systems)',
+    tp_s1: 'Run the script as administrator (or, on Mac and Linux, import the configuration: Settings › Network › Import).',
+    tp_s2: 'In RustDesk, click the account icon, then <b>Log in</b>, with the technician’s username and password.',
+    tp_s3: 'Open the <b>Accessible devices</b> tab: your devices are there, sorted by group.',
+    tp_need_api: 'First enter the technician sign-in address.',
+    acc_t: 'Technician accounts', acc_d: 'Each technician sees every device on the server. Two-factor authentication (code from an app such as Authenticator) is strongly recommended.',
+    acc_empty: 'No technicians yet.', acc_add: 'Add a technician', acc_add_btn: 'Create account',
+    ph_name: 'username (e.g. fabien)', ph_display: 'display name', ph_pw: 'password (at least 10 characters)', gen: 'Generate',
+    acc_created: 'Account created. Write down the password: it will not be shown again.',
+    t_last: 'last sign-in {d}', t_never: 'never signed in', t_sessions: '{n} open session(s)', t_2fa: 'Two-factor', t_off: 'Disabled',
+    act_pw: 'Password', act_2fa_on: 'Enable code', act_2fa_off: 'Remove code', act_disable: 'Disable', act_enable: 'Enable',
+    act_logout: 'Close sessions', act_del: 'Delete',
+    del_q: 'Delete account {n}? Its sessions are closed and its address book erased.',
+    tf_off_q: 'Remove two-factor authentication from account {n}?', logout_ok: 'Sessions closed.',
+    pw_t: 'Change password', pw_new: 'New password', pw_d: 'At least 10 characters. This technician’s open sessions will be closed.',
+    tf_t: 'Two-factor authentication', tf_d: 'Add this key to a code app (Authenticator, Google Authenticator, Bitwarden…), then enter the code shown to enable it. RustDesk will ask for this code at each sign-in.',
+    tf_key: 'Key to enter in the app', tf_link: 'Or open this link on a phone with a code app', tf_code: '6-digit code', tf_ok: 'Enable',
+    err_bad_name: 'Username: 2 to 32 characters, lowercase letters, digits, dot, dash.', err_name_taken: 'This username already exists.',
+    err_weak_password: 'Password too short (at least 10 characters).', err_bad_code: 'Wrong code.', err_not_found: 'Not found.',
+    err_no_api_url: 'First enter the technician sign-in address.',
   },
   es: {
     nav_status: 'Estado', nav_devices: 'Equipos', nav_deploy: 'Instalar en un equipo', nav_logs: 'Registro',
@@ -322,6 +445,36 @@ const I18N = {
     err_server_error: 'Error del servidor.', err_net: 'El servidor no responde.',
     ago_now: 'ahora mismo', ago_m: 'hace {n} min', ago_h: 'hace {n} h', ago_d: 'hace {n} d',
     footer: 'Motor RustDesk {v} (AGPL-3.0)',
+    nas_ip: 'dirección-IP-del-NAS', nav_techs: 'Técnicos', t_techs: 'Técnicos', s_techs: 'Las cuentas que ven tus equipos en RustDesk y se conectan a ellos.',
+    edit_group: 'Grupo (cliente, sede…): los equipos se ordenan así en RustDesk',
+    api_t: 'Dirección de conexión de los técnicos',
+    api_d: 'Los técnicos inician sesión en su cuenta desde RustDesk mediante una dirección HTTPS, para que su contraseña nunca circule en claro. Pasa por NPMplus (Desktroo Apps):',
+    api_s1: 'En NPMplus, crea un host proxy para <b>{host}</b> hacia <b>http://{ip}:21120</b>, con un certificado Let’s Encrypt.',
+    api_s2: 'Comprueba que el puerto 443 de tu router llega a NPMplus.',
+    api_s3: 'Indica abajo <b>https://{host}</b> y guarda.',
+    api_url: 'Dirección API para los técnicos', api_lan: 'Solo en la red local, también puedes indicar {url} (sin HTTPS, no la abras nunca a Internet).',
+    api_saved: 'Guardado.', err_bad_api_url: 'Dirección no válida: https://nombre-de-dominio, o http://dirección-local:21120.',
+    tp_t: 'Equipo del técnico (Windows)', tp_d: 'Instala RustDesk y lo configura para tu servidor con la dirección de conexión de arriba. Después, en RustDesk, inicia sesión con tu cuenta de técnico: la pestaña «Dispositivos accesibles» lista tus equipos con su presencia en línea, y un doble clic abre la sesión.',
+    tp_btn: 'Descargar el script del técnico', tp_cfg: 'Configuración del equipo del técnico (otros sistemas)',
+    tp_s1: 'Ejecuta el script como administrador (o, en Mac y Linux, importa la configuración: Ajustes › Red › Importar).',
+    tp_s2: 'En RustDesk, pulsa el icono de cuenta y luego <b>Iniciar sesión</b>, con el usuario y la contraseña del técnico.',
+    tp_s3: 'Abre la pestaña <b>Dispositivos accesibles</b>: ahí están tus equipos, ordenados por grupo.',
+    tp_need_api: 'Indica primero la dirección de conexión de los técnicos.',
+    acc_t: 'Cuentas de técnicos', acc_d: 'Cada técnico ve todos los equipos del servidor. Se recomienda encarecidamente la autenticación en dos pasos (código de una app como Authenticator).',
+    acc_empty: 'Aún no hay técnicos.', acc_add: 'Añadir un técnico', acc_add_btn: 'Crear la cuenta',
+    ph_name: 'usuario (p. ej. fabien)', ph_display: 'nombre mostrado', ph_pw: 'contraseña (10 caracteres como mínimo)', gen: 'Generar',
+    acc_created: 'Cuenta creada. Anota la contraseña: no se volverá a mostrar.',
+    t_last: 'última conexión {d}', t_never: 'nunca conectado', t_sessions: '{n} sesión(es) abierta(s)', t_2fa: 'Dos pasos', t_off: 'Desactivado',
+    act_pw: 'Contraseña', act_2fa_on: 'Activar código', act_2fa_off: 'Quitar código', act_disable: 'Desactivar', act_enable: 'Reactivar',
+    act_logout: 'Cerrar sesiones', act_del: 'Eliminar',
+    del_q: '¿Eliminar la cuenta {n}? Se cierran sus sesiones y se borra su libreta de direcciones.',
+    tf_off_q: '¿Quitar la autenticación en dos pasos de la cuenta {n}?', logout_ok: 'Sesiones cerradas.',
+    pw_t: 'Cambiar la contraseña', pw_new: 'Nueva contraseña', pw_d: '10 caracteres como mínimo. Se cerrarán las sesiones abiertas de este técnico.',
+    tf_t: 'Autenticación en dos pasos', tf_d: 'Añade esta clave en una app de códigos (Authenticator, Google Authenticator, Bitwarden…) y luego introduce el código mostrado para activarla. RustDesk pedirá este código en cada inicio de sesión.',
+    tf_key: 'Clave que introducir en la app', tf_link: 'O abre este enlace en un teléfono con una app de códigos', tf_code: 'Código de 6 cifras', tf_ok: 'Activar',
+    err_bad_name: 'Usuario: de 2 a 32 caracteres, minúsculas, cifras, punto, guion.', err_name_taken: 'Este usuario ya existe.',
+    err_weak_password: 'Contraseña demasiado corta (10 caracteres como mínimo).', err_bad_code: 'Código incorrecto.', err_not_found: 'No encontrado.',
+    err_no_api_url: 'Indica primero la dirección de conexión de los técnicos.',
   },
 };
 let LANG = 'fr';
@@ -339,6 +492,10 @@ function applyLang() {
   $('search').placeholder = T('search');
   $('ps-steps').innerHTML = ['ps_s1', 'ps_s2', 'ps_s3'].map((k) => '<li>' + T(k) + '</li>').join('');
   $('other-steps').innerHTML = ['other_s1', 'other_s2', 'other_s3'].map((k) => '<li>' + T(k) + '</li>').join('');
+  $('tp-steps').innerHTML = ['tp_s1', 'tp_s2', 'tp_s3'].map((k) => '<li>' + T(k) + '</li>').join('');
+  $('t-name').placeholder = T('ph_name'); $('t-display').placeholder = T('ph_display'); $('t-pw').placeholder = T('ph_pw');
+  renderApiSteps();
+  renderTechs();
   const o = $('log-proc').options; o[0].textContent = 'hbbs — ' + T('st_id'); o[1].textContent = 'hbbr — ' + T('st_relay');
   show(current, true);
   if (st) renderState();
@@ -369,7 +526,7 @@ function show(pane, keep) {
   document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('active', p.id === 'pane-' + pane));
   $('title').textContent = T('t_' + pane); $('sub').textContent = T('s_' + pane);
   if (window.desktroo) desktroo.setTitle('Desktroo Remote — ' + T('t_' + pane));
-  if (!keep) { if (pane === 'logs') loadLogs(); if (pane === 'devices') loadDevices(); if (pane === 'deploy') loadClientVersion(); }
+  if (!keep) { if (pane === 'logs') loadLogs(); if (pane === 'devices') loadDevices(); if (pane === 'deploy') loadClientVersion(); if (pane === 'techs') loadTechs(); }
 }
 
 function procLine(name, p) {
@@ -391,27 +548,65 @@ function renderState() {
   $('v-api').textContent = st.api || '—';
   $('v-cfg').textContent = st.config || '—';
   $('v-fname').textContent = st.filename || '—';
+  $('v-tcfg').textContent = st.techConfig || T('tp_need_api');
+  $('dl-tech').classList.toggle('disabled', !st.techConfig);
+  if (document.activeElement !== $('api-url') && !apiDirty) $('api-url').value = st.apiUrl || '';
+  $('api-url').placeholder = st.host ? 'https://' + st.host : 'https://…';
+  $('tcount').textContent = st.techs || '';
+  renderApiSteps();
   const ready = !!st.config;
   for (const id of ['dl-client', 'dl-ps']) $(id).classList.toggle('disabled', !ready);
   $('side-note').textContent = st.serverVersion ? T('footer', { v: st.serverVersion }) : '';
 }
 async function loadState() {
-  try { st = await api('api/state'); renderState(); } catch (e) { $('sub').textContent = e.message; }
+  try { st = await api('api/state?lang=' + LANG); renderState(); } catch (e) { $('sub').textContent = e.message; }
+}
+
+// ── Techniciens ──
+let techs = [], apiDirty = false, pwFor = null, totpFor = null;
+function renderApiSteps() {
+  // Desktroo ouvert par son adresse IP : c'est celle du NAS ; ouvert par un nom de domaine, on ne la connaît pas.
+  const nasIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(location.hostname) ? location.hostname : T('nas_ip');
+  const host = esc((st && st.host) || 'remote.exemple.fr'), ip = esc(nasIp);
+  $('api-steps').innerHTML = ['api_s1', 'api_s2', 'api_s3'].map((k) => '<li>' + T(k, { host, ip }) + '</li>').join('');
+  $('api-lan').textContent = T('api_lan', { url: 'http://' + nasIp + ':' + ((st && st.lanPort) || 21120) });
+}
+function renderTechs() {
+  const ul = $('techs'); if (!ul) return;
+  ul.innerHTML = techs.map((t) => {
+    const meta = [t.lastLogin ? T('t_last', { d: ago(t.lastLogin) }) : T('t_never'), t.sessions ? T('t_sessions', { n: t.sessions }) : ''].filter(Boolean).map(esc).join(' · ');
+    const badges = (t.totp ? `<span class="badge">${esc(T('t_2fa'))}</span>` : '') + (t.disabled ? `<span class="badge busy">${esc(T('t_off'))}</span>` : '');
+    return `<li data-name="${esc(t.name)}"><span class="dot ${t.disabled ? 'off' : (t.sessions ? 'on' : '')}"></span>
+      <div class="main"><div class="name">${esc(t.display || t.name)}${badges}</div><div class="meta"><span class="id">${esc(t.name)}</span> · ${meta}</div></div>
+      <div class="btns"><button class="dk-btn" data-t-act="pw">${esc(T('act_pw'))}</button>
+        <button class="dk-btn" data-t-act="${t.totp ? '2fa-off' : '2fa-on'}">${esc(T(t.totp ? 'act_2fa_off' : 'act_2fa_on'))}</button>
+        <button class="dk-btn" data-t-act="toggle">${esc(T(t.disabled ? 'act_enable' : 'act_disable'))}</button>
+        ${t.sessions ? `<button class="dk-btn" data-t-act="logout">${esc(T('act_logout'))}</button>` : ''}
+        <button class="dk-btn danger" data-t-act="del">${esc(T('act_del'))}</button></div></li>`;
+  }).join('');
+  $('techs-empty').style.display = techs.length ? 'none' : '';
+}
+async function loadTechs() { try { techs = await api('api/techs'); renderTechs(); } catch (e) { notify(e.message, 'error'); } }
+function genPassword() {
+  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => c[x % c.length]).join('').replace(/(.{4})(?=.)/g, '$1-');
 }
 
 function renderDevices() {
   const q = $('search').value.trim().toLowerCase();
-  const list = devs.filter((d) => !q || [d.id, d.label, d.hostname, d.username, d.os, d.note, d.ip].join(' ').toLowerCase().includes(q));
+  const list = devs.filter((d) => !q || [d.id, d.label, d.group, d.hostname, d.username, d.os, d.note, d.ip].join(' ').toLowerCase().includes(q));
   $('devs').innerHTML = list.map((d) => {
     const name = d.label || d.hostname || d.id;
     const state = d.inSession ? `<span class="badge busy">${esc(T('in_session'))}</span>` : (d.online ? `<span class="badge">${esc(T('online'))}</span>` : '');
     const seen = d.online ? '' : (d.lastSeen ? T('offline_ago', { d: ago(d.lastSeen) }) : T('never'));
     const os = d.os.includes(' / ') ? d.os.split(' / ').slice(1).join(' / ').replace(/\s+-\s+[\d.]+$/, '') : d.os;   // « windows / Windows 11 Pro - 10.0.26100 » → « Windows 11 Pro »
+    const tag = d.group ? `<span class="tag">${esc(d.group)}</span>` : '';
     const meta = [d.label && d.hostname ? d.hostname : '', d.username, os, d.ip, seen].filter(Boolean).map(esc).join(' · ');
     const dot = d.inSession ? 'busy' : (d.online ? 'on' : '');
     return `<li data-id="${esc(d.id)}"><span class="dot ${dot}"></span>
       <div class="main"><div class="name">${esc(name)}${state}</div>
-        <div class="meta"><span class="id">${esc(d.id)}</span>${meta ? ' · ' + meta : ''}</div>
+        <div class="meta">${tag}<span class="id">${esc(d.id)}</span>${meta ? ' · ' + meta : ''}</div>
         ${d.reporting ? '' : `<div class="meta" title="${esc(T('no_report'))}">${esc(T('no_report'))}</div>`}
         ${d.note ? `<div class="note">${esc(d.note)}</div>` : ''}</div>
       <div class="btns"><a class="dk-btn primary" data-act="connect" href="rustdesk://connection/new/${encodeURIComponent(d.id)}">${esc(T('connect'))}</a>
@@ -476,7 +671,9 @@ $('devs').addEventListener('click', async (ev) => {
   if (b.dataset.act === 'copy') return copyText(id, b);
   if (b.dataset.act === 'edit') {
     editing = id; $('edit-id').textContent = id + (d.hostname ? ' · ' + d.hostname : '');
-    $('edit-label').value = d.label; $('edit-note').value = d.note; $('edit').showModal(); $('edit-label').focus(); return;
+    $('edit-label').value = d.label; $('edit-note').value = d.note; $('edit-group').value = d.group || '';
+    $('groups').innerHTML = [...new Set(devs.map((x) => x.group).filter(Boolean))].sort().map((g) => `<option value="${esc(g)}">`).join('');
+    $('edit').showModal(); $('edit-label').focus(); return;
   }
   if (b.dataset.act === 'remove' && confirm(T('remove_q', { n: d.label || d.hostname || id }))) {
     try { await api('api/devices/' + encodeURIComponent(id), { method: 'DELETE' }); await loadDevices(); loadState(); }
@@ -486,7 +683,7 @@ $('devs').addEventListener('click', async (ev) => {
 $('edit-cancel').addEventListener('click', () => $('edit').close());
 $('edit-save').addEventListener('click', async () => {
   try {
-    await api('api/devices/' + encodeURIComponent(editing), { method: 'PUT', body: JSON.stringify({ label: $('edit-label').value, note: $('edit-note').value }) });
+    await api('api/devices/' + encodeURIComponent(editing), { method: 'PUT', body: JSON.stringify({ label: $('edit-label').value, group: $('edit-group').value, note: $('edit-note').value }) });
     $('edit').close(); loadDevices();
   } catch (e) { alert(e.message); }
 });
@@ -496,6 +693,55 @@ $('restart').addEventListener('click', async () => {
 });
 $('ps-pw').addEventListener('change', () => { $('dl-ps').href = 'deploy/windows.ps1' + ($('ps-pw').checked ? '?password=1' : ''); });
 $('log-proc').addEventListener('change', loadLogs);
+document.querySelectorAll('dialog [data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+
+// Techniciens
+$('api-url').addEventListener('input', () => { apiDirty = true; });
+$('api-save').addEventListener('click', async () => {
+  const m = $('api-msg');
+  try {
+    await api('api/settings', { method: 'PUT', body: JSON.stringify({ apiUrl: $('api-url').value.trim() }) });
+    apiDirty = false; m.className = 'okc'; m.textContent = T('api_saved'); loadState();
+  } catch (e) { m.className = 'err'; m.textContent = e.message; }
+});
+$('t-gen').addEventListener('click', () => { $('t-pw').value = genPassword(); });
+$('t-add').addEventListener('click', async () => {
+  const m = $('t-msg');
+  try {
+    await api('api/techs', { method: 'POST', body: JSON.stringify({ name: $('t-name').value.trim().toLowerCase(), display: $('t-display').value.trim(), password: $('t-pw').value }) });
+    m.className = 'okc'; m.textContent = T('acc_created');
+    $('t-name').value = ''; $('t-display').value = '';
+    setTimeout(() => { $('t-pw').value = ''; }, 60000);
+    loadTechs(); loadState();
+  } catch (e) { m.className = 'err'; m.textContent = e.message; }
+});
+$('techs').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button[data-t-act]'); if (!b) return;
+  const name = b.closest('li').dataset.name, t = techs.find((x) => x.name === name); if (!t) return;
+  const url = 'api/techs/' + encodeURIComponent(name), act = b.dataset.tAct;
+  try {
+    if (act === 'pw') { pwFor = name; $('pwd-name').textContent = name; $('pwd-val').value = ''; $('pwd').showModal(); $('pwd-val').focus(); return; }
+    if (act === '2fa-on') {
+      const r = await api(url + '/totp', { method: 'POST' });
+      totpFor = name; $('totp-secret').textContent = r.secret.replace(/(.{4})/g, '$1 ').trim(); $('totp-uri').href = r.uri;
+      $('totp-code').value = ''; $('totp-msg').textContent = ''; $('totp').showModal(); $('totp-code').focus(); return;
+    }
+    if (act === '2fa-off') { if (!confirm(T('tf_off_q', { n: name }))) return; await api(url + '/totp', { method: 'DELETE' }); }
+    if (act === 'toggle') await api(url, { method: 'PUT', body: JSON.stringify({ disabled: !t.disabled }) });
+    if (act === 'logout') { await api(url + '/logout', { method: 'POST' }); notify(T('logout_ok')); }
+    if (act === 'del') { if (!confirm(T('del_q', { n: name }))) return; await api(url, { method: 'DELETE' }); loadState(); }
+    loadTechs();
+  } catch (e) { alert(e.message); }
+});
+$('pwd-gen').addEventListener('click', () => { $('pwd-val').value = genPassword(); });
+$('pwd-save').addEventListener('click', async () => {
+  try { await api('api/techs/' + encodeURIComponent(pwFor), { method: 'PUT', body: JSON.stringify({ password: $('pwd-val').value }) }); $('pwd').close(); loadTechs(); }
+  catch (e) { alert(e.message); }
+});
+$('totp-ok').addEventListener('click', async () => {
+  try { await api('api/techs/' + encodeURIComponent(totpFor) + '/totp/confirm', { method: 'POST', body: JSON.stringify({ code: $('totp-code').value }) }); $('totp').close(); loadTechs(); }
+  catch (e) { $('totp-msg').textContent = e.message; }
+});
 $('log-refresh').addEventListener('click', loadLogs);
 
 if (window.desktroo) desktroo.onTheme((t) => { const l = pickLang(t && t.lang); if (l !== LANG) { LANG = l; applyLang(); } });
