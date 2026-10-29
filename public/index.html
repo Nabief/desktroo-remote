@@ -39,13 +39,16 @@
   .steps b { color: var(--text); font-weight: 600; }
   .search { max-width: 340px; }
   .devs { list-style: none; margin: 14px 0 0; padding: 0; max-width: 980px; }
-  .devs li { display: flex; gap: 14px; align-items: center; background: var(--surface); border: 1px solid var(--glass-border); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
-  .devs .main { flex: 1; min-width: 0; }
+  /* Fenêtre étroite : les boutons passent sous les infos du poste au lieu de les écraser. */
+  .devs li { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; background: var(--surface); border: 1px solid var(--glass-border); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
+  .devs li > .dot { align-self: flex-start; margin-top: 6px; }
+  .devs .main { flex: 1 1 300px; min-width: 0; }
+  .devs .hint { flex-basis: 100%; font-size: 12.5px; padding: 8px 12px; border-radius: 10px; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.35); }
   .devs .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .devs .meta { font-size: 12px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .devs .note { font-size: 12px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
   .devs .id { font-family: var(--font-mono); font-size: 13px; letter-spacing: .5px; }
-  .devs .btns { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .devs .btns { display: flex; gap: 6px; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
   .devs .btns .dk-btn { padding: 5px 11px; font-size: 12px; }
   .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; background: rgba(var(--accent-rgb),.16); color: var(--accent2); font-size: 11px; font-weight: 600; margin-left: 6px; vertical-align: 1px; }
   .badge.busy { background: rgba(245,158,11,.16); color: var(--warning); }
@@ -55,7 +58,9 @@
   dialog { border: 1px solid var(--glass-border); border-radius: 16px; background: var(--surface); color: var(--text); padding: 20px; width: min(440px, 92vw); }
   dialog::backdrop { background: rgba(0,0,0,.45); }
   dialog textarea { width: 100%; min-height: 80px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--glass-border); background: var(--surface-2); color: var(--text); font: 14px var(--font-body); resize: vertical; }
-  @media (max-width: 620px) { .devs li { flex-wrap: wrap; } .devs .btns { width: 100%; justify-content: flex-start; } }
+  dialog h2 { margin: 0 0 4px; }
+  dialog .lbl { margin: 16px 0 6px; }
+  @media (max-width: 620px) { .devs .btns { width: 100%; justify-content: flex-start; margin-left: 0; } }
 </style>
 </head>
 <body>
@@ -194,6 +199,7 @@ const I18N = {
     online: 'En ligne', in_session: 'En session', offline_ago: 'vu {d}', never: 'pas encore de signal',
     no_report: 'Ce poste est enregistré mais n’envoie pas sa fiche (version ancienne de RustDesk ou port 21114 fermé).',
     connect: 'Se connecter', edit: 'Renommer', remove: 'Retirer',
+    connect_hint: 'RustDesk ne s’est pas ouvert : pour que ce bouton lance la session, RustDesk doit être installé sur cet ordinateur (la version portable n’ouvre pas ces liens ; dans sa fenêtre, « Installer »). L’ID {id} est copié : vous pouvez le coller dans RustDesk.',
     remove_q: 'Retirer {n} de la liste ? Il y reviendra s’il se reconnecte.',
     empty: 'Aucun poste pour l’instant. Installez RustDesk sur un ordinateur depuis « Installer sur un poste » : il apparaîtra ici dès son premier démarrage.',
     empty_search: 'Aucun poste ne correspond.',
@@ -242,6 +248,7 @@ const I18N = {
     online: 'Online', in_session: 'In session', offline_ago: 'seen {d}', never: 'no signal yet',
     no_report: 'This device is registered but does not send its details (old RustDesk version or port 21114 closed).',
     connect: 'Connect', edit: 'Rename', remove: 'Remove',
+    connect_hint: 'RustDesk did not open: for this button to start the session, RustDesk must be installed on this computer (the portable version does not open these links; in its window, “Install”). ID {id} is copied: you can paste it into RustDesk.',
     remove_q: 'Remove {n} from the list? It will come back if it reconnects.',
     empty: 'No devices yet. Install RustDesk on a computer from “Set up a device”: it will appear here as soon as it starts.',
     empty_search: 'No matching device.',
@@ -290,6 +297,7 @@ const I18N = {
     online: 'En línea', in_session: 'En sesión', offline_ago: 'visto {d}', never: 'aún sin señal',
     no_report: 'Este equipo está registrado pero no envía su ficha (versión antigua de RustDesk o puerto 21114 cerrado).',
     connect: 'Conectar', edit: 'Renombrar', remove: 'Quitar',
+    connect_hint: 'RustDesk no se ha abierto: para que este botón inicie la sesión, RustDesk debe estar instalado en este ordenador (la versión portable no abre estos enlaces; en su ventana, «Instalar»). El ID {id} está copiado: puedes pegarlo en RustDesk.',
     remove_q: '¿Quitar {n} de la lista? Volverá si se reconecta.',
     empty: 'Aún no hay equipos. Instala RustDesk en un ordenador desde «Instalar en un equipo»: aparecerá aquí en cuanto arranque.',
     empty_search: 'Ningún equipo coincide.',
@@ -398,14 +406,15 @@ function renderDevices() {
     const name = d.label || d.hostname || d.id;
     const state = d.inSession ? `<span class="badge busy">${esc(T('in_session'))}</span>` : (d.online ? `<span class="badge">${esc(T('online'))}</span>` : '');
     const seen = d.online ? '' : (d.lastSeen ? T('offline_ago', { d: ago(d.lastSeen) }) : T('never'));
-    const meta = [d.label && d.hostname ? d.hostname : '', d.username, d.os, d.ip, seen].filter(Boolean).map(esc).join(' · ');
+    const os = d.os.includes(' / ') ? d.os.split(' / ').slice(1).join(' / ').replace(/\s+-\s+[\d.]+$/, '') : d.os;   // « windows / Windows 11 Pro - 10.0.26100 » → « Windows 11 Pro »
+    const meta = [d.label && d.hostname ? d.hostname : '', d.username, os, d.ip, seen].filter(Boolean).map(esc).join(' · ');
     const dot = d.inSession ? 'busy' : (d.online ? 'on' : '');
     return `<li data-id="${esc(d.id)}"><span class="dot ${dot}"></span>
       <div class="main"><div class="name">${esc(name)}${state}</div>
         <div class="meta"><span class="id">${esc(d.id)}</span>${meta ? ' · ' + meta : ''}</div>
         ${d.reporting ? '' : `<div class="meta" title="${esc(T('no_report'))}">${esc(T('no_report'))}</div>`}
         ${d.note ? `<div class="note">${esc(d.note)}</div>` : ''}</div>
-      <div class="btns"><a class="dk-btn primary" href="rustdesk://connection/new/${encodeURIComponent(d.id)}">${esc(T('connect'))}</a>
+      <div class="btns"><a class="dk-btn primary" data-act="connect" href="rustdesk://connection/new/${encodeURIComponent(d.id)}">${esc(T('connect'))}</a>
         <button class="dk-btn" data-act="copy">${esc(T('copy'))} ID</button>
         <button class="dk-btn" data-act="edit">${esc(T('edit'))}</button>
         <button class="dk-btn danger" data-act="remove">${esc(T('remove'))}</button></div></li>`;
@@ -442,6 +451,25 @@ document.addEventListener('click', (ev) => {
   const a = ev.target.closest('a.disabled'); if (a) ev.preventDefault();
 });
 $('search').addEventListener('input', renderDevices);
+// « Se connecter » : lien rustdesk://, ouvert par Windows seulement si RustDesk est installé sur cet ordinateur (la
+// version portable n'enregistre pas ces liens ; rien ne se passe alors). L'ID est copié dans tous les cas, et si
+// aucune application n'a pris la main au bout de 2 s, une explication s'affiche sous le poste.
+$('devs').addEventListener('click', (ev) => {
+  const a = ev.target.closest('a[data-act=connect]'); if (!a) return;
+  const li = a.closest('li'), id = li.dataset.id;
+  copyText(id);
+  let left = false;
+  const onBlur = () => { left = true; };
+  window.addEventListener('blur', onBlur, { once: true });
+  setTimeout(() => {
+    window.removeEventListener('blur', onBlur);
+    if (left || !document.hasFocus() || li.querySelector('.hint')) return;
+    const h = document.createElement('div'); h.className = 'hint';
+    h.textContent = T('connect_hint', { id });
+    li.appendChild(h);
+    setTimeout(() => h.remove(), 20000);
+  }, 2000);
+});
 $('devs').addEventListener('click', async (ev) => {
   const b = ev.target.closest('button[data-act]'); if (!b) return;
   const id = b.closest('li').dataset.id, d = devs.find((x) => x.id === id); if (!d) return;
