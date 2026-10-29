@@ -1,0 +1,15 @@
+Desktroo Remote — © 2026 Mdm-services.fr. Tous droits réservés.
+
+Cette image contient, sans modification, les programmes hbbs et hbbr de RustDesk Server
+(© Purslane Ltd. et contributeurs), distribués sous la licence GNU Affero General Public
+License version 3 (AGPL-3.0) :
+
+  Code source : https://github.com/rustdesk/rustdesk-server
+  Licence     : https://github.com/rustdesk/rustdesk-server/blob/master/LICENSE
+
+Ces programmes sont lancés comme des processus séparés. Le reste de l'image (server.js,
+public/) est le logiciel propriétaire Desktroo Remote, soumis à la licence d'utilisation de
+Desktroo (https://desktroo.fr).
+
+RustDesk est une marque de Purslane Ltd. Desktroo Remote n'est ni affilié au projet RustDesk
+ni soutenu par lui.

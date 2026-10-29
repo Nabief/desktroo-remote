@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Desktroo Remote</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="stylesheet" href="../_sdk/desktroo-app.css">
+<script src="../_sdk/desktroo-app.js"></script>
+<!-- Desktroo Remote — © 2026 Mdm-services.fr. Tous droits réservés. -->
+<style>
+  .pane { display: none; } .pane.active { display: block; }
+  a.dk-btn { text-decoration: none; }
+  a.dk-btn.disabled { opacity: .5; pointer-events: none; }
+  .card { background: var(--surface); border: 1px solid var(--glass-border); border-radius: 14px; padding: 18px; margin-bottom: 16px; max-width: 860px; }
+  .card h2 { margin: 0 0 4px; font-size: 15px; }
+  .card p { margin: 6px 0; }
+  .dim { color: var(--text-dim); font-size: 13px; }
+  .mono { font-family: var(--font-mono); font-size: 12.5px; word-break: break-all; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; max-width: 860px; margin-bottom: 16px; }
+  .stat { background: var(--surface); border: 1px solid var(--glass-border); border-radius: 14px; padding: 14px 16px; }
+  .stat .k { font-size: 12px; color: var(--text-dim); }
+  .stat .v { font-size: 20px; font-weight: 700; font-family: var(--font-display); margin-top: 2px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--text-dim); margin-right: 7px; vertical-align: 1px; flex-shrink: 0; }
+  .dot.on { background: var(--success); box-shadow: 0 0 0 3px rgba(62,207,142,.18); }
+  .dot.off { background: var(--danger); }
+  .dot.busy { background: var(--warning); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+  .field { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .field .val { flex: 1; min-width: 0; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--glass-border); }
+  .lbl { font-size: 12px; font-weight: 600; margin-top: 14px; }
+  table.ports { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; }
+  table.ports td, table.ports th { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--glass-border); }
+  table.ports th { font-size: 11.5px; color: var(--text-dim); font-weight: 600; }
+  .warn { border-color: rgba(245,158,11,.5); background: rgba(245,158,11,.08); }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; cursor: pointer; margin-top: 12px; }
+  .check input { margin-top: 3px; accent-color: var(--accent); }
+  .steps { margin: 8px 0 0; padding-left: 20px; color: var(--text-dim); font-size: 13px; line-height: 1.7; }
+  .steps b { color: var(--text); font-weight: 600; }
+  .search { max-width: 340px; }
+  .devs { list-style: none; margin: 14px 0 0; padding: 0; max-width: 980px; }
+  .devs li { display: flex; gap: 14px; align-items: center; background: var(--surface); border: 1px solid var(--glass-border); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
+  .devs .main { flex: 1; min-width: 0; }
+  .devs .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .devs .meta { font-size: 12px; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .devs .note { font-size: 12px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+  .devs .id { font-family: var(--font-mono); font-size: 13px; letter-spacing: .5px; }
+  .devs .btns { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .devs .btns .dk-btn { padding: 5px 11px; font-size: 12px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; background: rgba(var(--accent-rgb),.16); color: var(--accent2); font-size: 11px; font-weight: 600; margin-left: 6px; vertical-align: 1px; }
+  .badge.busy { background: rgba(245,158,11,.16); color: var(--warning); }
+  .empty { color: var(--text-dim); font-size: 13px; padding: 20px 0; max-width: 640px; }
+  pre.logs { background: var(--surface-2); border: 1px solid var(--glass-border); border-radius: 12px; padding: 12px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; max-height: calc(100vh - 200px); overflow: auto; margin: 12px 0 0; }
+  select.dk-input { width: auto; }
+  dialog { border: 1px solid var(--glass-border); border-radius: 16px; background: var(--surface); color: var(--text); padding: 20px; width: min(440px, 92vw); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog textarea { width: 100%; min-height: 80px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--glass-border); background: var(--surface-2); color: var(--text); font: 14px var(--font-body); resize: vertical; }
+  @media (max-width: 620px) { .devs li { flex-wrap: wrap; } .devs .btns { width: 100%; justify-content: flex-start; } }
+</style>
+</head>
+<body>
+<div class="dk-shell">
+  <nav class="dk-side">
+    <div class="dk-side-title">Desktroo Remote</div>
+    <button class="dk-nav active" data-pane="status"><span class="dk-nav-ic">◉</span><span class="dk-nav-name" data-t="nav_status"></span></button>
+    <button class="dk-nav" data-pane="devices"><span class="dk-nav-ic">▣</span><span class="dk-nav-name" data-t="nav_devices"></span><span class="dk-count" id="count"></span></button>
+    <button class="dk-nav" data-pane="deploy"><span class="dk-nav-ic">⇩</span><span class="dk-nav-name" data-t="nav_deploy"></span></button>
+    <div class="dk-side-fill"></div>
+    <div class="dk-side-sep"></div>
+    <button class="dk-nav" data-pane="logs"><span class="dk-nav-ic">≡</span><span class="dk-nav-name" data-t="nav_logs"></span></button>
+    <div class="dk-side-note" id="side-note"></div>
+  </nav>
+
+  <section class="dk-main">
+    <header class="dk-head">
+      <div class="dk-head-text"><h1 class="dk-title" id="title"></h1><div class="dk-sub" id="sub"></div></div>
+      <div class="dk-head-actions" id="head-actions"></div>
+    </header>
+    <div class="dk-body">
+
+      <!-- État -->
+      <div class="pane active" id="pane-status">
+        <div class="card warn" id="host-warn" style="display:none"><b data-t="host_missing_t"></b><p class="dim" data-t="host_missing"></p></div>
+        <div class="grid">
+          <div class="stat"><div class="k" data-t="st_id"></div><div class="v"><span class="dot" id="dot-hbbs"></span><span id="st-hbbs">…</span></div><div class="dim" id="st-hbbs-sub"></div></div>
+          <div class="stat"><div class="k" data-t="st_relay"></div><div class="v"><span class="dot" id="dot-hbbr"></span><span id="st-hbbr">…</span></div><div class="dim" id="st-hbbr-sub"></div></div>
+          <div class="stat"><div class="k" data-t="st_devices"></div><div class="v" id="st-devices">…</div><div class="dim" id="st-devices-sub"></div></div>
+        </div>
+        <div class="card">
+          <h2 data-t="srv_t"></h2>
+          <p class="dim" data-t="srv_d"></p>
+          <div class="lbl" data-t="srv_host"></div>
+          <div class="field"><div class="val mono" id="v-host">…</div><button class="dk-btn" data-copy="v-host" data-t="copy"></button></div>
+          <div class="lbl" data-t="srv_key"></div>
+          <div class="field"><div class="val mono" id="v-key">…</div><button class="dk-btn" data-copy="v-key" data-t="copy"></button></div>
+          <div class="lbl" data-t="srv_api"></div>
+          <div class="field"><div class="val mono" id="v-api">…</div><button class="dk-btn" data-copy="v-api" data-t="copy"></button></div>
+        </div>
+        <div class="card">
+          <h2 data-t="ports_t"></h2>
+          <p class="dim" data-t="ports_d"></p>
+          <table class="ports">
+            <thead><tr><th data-t="ports_port"></th><th data-t="ports_proto"></th><th data-t="ports_role"></th></tr></thead>
+            <tbody>
+              <tr><td class="mono">21115</td><td>TCP</td><td data-t="role_nat"></td></tr>
+              <tr><td class="mono">21116</td><td>TCP + UDP</td><td data-t="role_id"></td></tr>
+              <tr><td class="mono">21117</td><td>TCP</td><td data-t="role_relay"></td></tr>
+              <tr><td class="mono">21114</td><td>TCP</td><td data-t="role_api"></td></tr>
+            </tbody>
+          </table>
+          <div class="actions"><button class="dk-btn" id="restart" data-t="restart"></button><span class="dim" id="restart-msg"></span></div>
+        </div>
+      </div>
+
+      <!-- Postes -->
+      <div class="pane" id="pane-devices">
+        <input class="dk-input search" id="search" type="search" autocomplete="off">
+        <ul class="devs" id="devs"></ul>
+        <div class="empty" id="devs-empty" style="display:none"></div>
+      </div>
+
+      <!-- Déployer -->
+      <div class="pane" id="pane-deploy">
+        <div class="card">
+          <h2 data-t="dl_t"></h2>
+          <p class="dim" data-t="dl_d"></p>
+          <div class="actions"><a class="dk-btn primary" id="dl-client" href="download/windows" data-t="dl_btn"></a><span class="dim" id="dl-ver"></span></div>
+        </div>
+        <div class="card">
+          <h2 data-t="ps_t"></h2>
+          <p class="dim" data-t="ps_d"></p>
+          <label class="check"><input type="checkbox" id="ps-pw"><span><b data-t="ps_pw"></b><br><span class="dim" data-t="ps_pw_d"></span></span></label>
+          <div class="actions"><a class="dk-btn" id="dl-ps" href="deploy/windows.ps1" data-t="ps_btn"></a></div>
+          <ol class="steps" id="ps-steps"></ol>
+        </div>
+        <div class="card">
+          <h2 data-t="other_t"></h2>
+          <p class="dim" data-t="other_d"></p>
+          <div class="lbl" data-t="other_cfg"></div>
+          <div class="field"><div class="val mono" id="v-cfg">…</div><button class="dk-btn" data-copy="v-cfg" data-t="copy"></button></div>
+          <ol class="steps" id="other-steps"></ol>
+        </div>
+      </div>
+
+      <!-- Journal -->
+      <div class="pane" id="pane-logs">
+        <div class="actions" style="margin-top:0">
+          <select class="dk-input" id="log-proc"><option value="hbbs"></option><option value="hbbr"></option></select>
+          <button class="dk-btn" id="log-refresh" data-t="refresh"></button>
+        </div>
+        <pre class="logs" id="logs"></pre>
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<dialog id="edit">
+  <h2 data-t="edit_t"></h2>
+  <div class="dim mono" id="edit-id"></div>
+  <div class="lbl" data-t="edit_label"></div>
+  <input class="dk-input" id="edit-label" maxlength="60">
+  <div class="lbl" data-t="edit_note"></div>
+  <textarea id="edit-note" maxlength="300"></textarea>
+  <div class="actions"><button class="dk-btn primary" id="edit-save" data-t="save"></button><button class="dk-btn" id="edit-cancel" data-t="cancel"></button></div>
+</dialog>
+
+<script>
+'use strict';
+const I18N = {
+  fr: {
+    nav_status: 'État', nav_devices: 'Postes', nav_deploy: 'Installer sur un poste', nav_logs: 'Journal',
+    t_status: 'État du serveur', s_status: 'Votre serveur d’assistance à distance, sur ce NAS.',
+    t_devices: 'Postes', s_devices: 'Les ordinateurs reliés à votre serveur.',
+    t_deploy: 'Installer sur un poste', s_deploy: 'RustDesk, déjà réglé pour votre serveur.',
+    t_logs: 'Journal', s_logs: 'Messages du serveur RustDesk.',
+    host_missing_t: 'Adresse publique absente ou invalide',
+    host_missing: 'Les postes ne pourront pas joindre ce serveur. Réinstallez l’app depuis Desktroo Apps en indiquant le nom de domaine (ou l’adresse IP fixe) de votre box.',
+    st_id: 'Serveur d’identifiants', st_relay: 'Relais', st_devices: 'Postes en ligne',
+    running: 'En marche', stopped: 'Arrêté', since: 'depuis {d}', restarts: '{n} redémarrage(s)',
+    dev_sub: '{n} poste(s) connu(s)',
+    srv_t: 'Réglages du serveur', srv_d: 'À saisir dans RustDesk, dans Paramètres › Réseau › Serveur d’ID/relais, si vous réglez un poste à la main.',
+    srv_host: 'Serveur d’ID et serveur relais', srv_key: 'Clé', srv_api: 'Serveur API',
+    copy: 'Copier', copied: 'Copié',
+    ports_t: 'Ports à rediriger dans votre box', ports_d: 'Redirigez ces ports vers ce NAS pour que les postes le joignent depuis Internet.',
+    ports_port: 'Port', ports_proto: 'Protocole', ports_role: 'Rôle',
+    role_nat: 'Test du type de réseau', role_id: 'Identifiants et mise en relation', role_relay: 'Relais (quand la connexion directe est impossible)',
+    role_api: 'Présence et fiche des postes (liste des postes)',
+    restart: 'Redémarrer le serveur', restart_ok: 'Redémarrage en cours…',
+    search: 'Rechercher un nom, un ID, un utilisateur…',
+    online: 'En ligne', in_session: 'En session', offline_ago: 'vu {d}', never: 'pas encore de signal',
+    no_report: 'Ce poste est enregistré mais n’envoie pas sa fiche (version ancienne de RustDesk ou port 21114 fermé).',
+    connect: 'Se connecter', edit: 'Renommer', remove: 'Retirer',
+    remove_q: 'Retirer {n} de la liste ? Il y reviendra s’il se reconnecte.',
+    empty: 'Aucun poste pour l’instant. Installez RustDesk sur un ordinateur depuis « Installer sur un poste » : il apparaîtra ici dès son premier démarrage.',
+    empty_search: 'Aucun poste ne correspond.',
+    edit_t: 'Renommer le poste', edit_label: 'Nom affiché (client, service, lieu…)', edit_note: 'Note', save: 'Enregistrer', cancel: 'Annuler',
+    dl_t: 'Windows : RustDesk préconfiguré', dl_d: 'Le programme officiel de RustDesk, renommé pour se relier à votre serveur dès son lancement. Envoyez-le à votre client : il l’ouvre, vous donne son ID et son mot de passe, et c’est tout. Il fonctionne sans installation ou peut être installé depuis sa fenêtre.',
+    dl_btn: 'Télécharger pour Windows', dl_ver: 'RustDesk {v}, téléchargé depuis GitHub',
+    ps_t: 'Windows : installation par script', ps_d: 'Installe RustDesk comme service (accès même sans personne devant l’écran), le règle pour votre serveur et affiche l’ID du poste. Pour vos postes gérés ou un déploiement en série.',
+    ps_pw: 'Créer un mot de passe permanent', ps_pw_d: 'Un mot de passe aléatoire, propre à chaque poste, affiché une seule fois à la fin du script : accès sans que l’utilisateur ait à accepter.',
+    ps_btn: 'Télécharger le script',
+    ps_s1: 'Copiez <b>desktroo-remote.ps1</b> sur le poste.',
+    ps_s2: 'Ouvrez PowerShell <b>en administrateur</b> dans ce dossier.',
+    ps_s3: 'Lancez : <b>powershell -ExecutionPolicy Bypass -File .\\desktroo-remote.ps1</b>',
+    other_t: 'macOS, Linux, Android, iOS', other_d: 'Installez RustDesk depuis rustdesk.com ou la boutique de l’appareil, puis importez la configuration.',
+    other_cfg: 'Configuration à importer',
+    other_s1: 'Copiez la configuration ci-dessus.',
+    other_s2: 'Dans RustDesk : <b>Paramètres › Réseau › Serveur d’ID/relais</b>.',
+    other_s3: 'Cliquez sur <b>Importer</b> (icône presse-papiers) ; ou saisissez à la main les réglages de l’onglet « État ».',
+    refresh: 'Actualiser',
+    err_github_unreachable: 'GitHub ne répond pas : réessayez dans un instant.',
+    err_not_ready: 'Le serveur n’est pas encore prêt (clé ou adresse publique manquante).',
+    err_server_error: 'Erreur du serveur.', err_net: 'Le serveur ne répond pas.',
+    ago_now: 'à l’instant', ago_m: 'il y a {n} min', ago_h: 'il y a {n} h', ago_d: 'il y a {n} j',
+    footer: 'Moteur RustDesk {v} (AGPL-3.0)',
+  },
+  en: {
+    nav_status: 'Status', nav_devices: 'Devices', nav_deploy: 'Set up a device', nav_logs: 'Log',
+    t_status: 'Server status', s_status: 'Your remote support server, on this NAS.',
+    t_devices: 'Devices', s_devices: 'Computers linked to your server.',
+    t_deploy: 'Set up a device', s_deploy: 'RustDesk, already configured for your server.',
+    t_logs: 'Log', s_logs: 'Messages from the RustDesk server.',
+    host_missing_t: 'Public address missing or invalid',
+    host_missing: 'Devices will not be able to reach this server. Reinstall the app from Desktroo Apps with your router’s domain name (or fixed IP address).',
+    st_id: 'ID server', st_relay: 'Relay', st_devices: 'Devices online',
+    running: 'Running', stopped: 'Stopped', since: 'since {d}', restarts: '{n} restart(s)',
+    dev_sub: '{n} known device(s)',
+    srv_t: 'Server settings', srv_d: 'To enter in RustDesk, under Settings › Network › ID/Relay server, if you set up a device by hand.',
+    srv_host: 'ID server and relay server', srv_key: 'Key', srv_api: 'API server',
+    copy: 'Copy', copied: 'Copied',
+    ports_t: 'Ports to forward in your router', ports_d: 'Forward these ports to this NAS so devices can reach it from the Internet.',
+    ports_port: 'Port', ports_proto: 'Protocol', ports_role: 'Role',
+    role_nat: 'Network type test', role_id: 'IDs and connection setup', role_relay: 'Relay (when a direct connection is impossible)',
+    role_api: 'Device presence and details (device list)',
+    restart: 'Restart the server', restart_ok: 'Restarting…',
+    search: 'Search a name, an ID, a user…',
+    online: 'Online', in_session: 'In session', offline_ago: 'seen {d}', never: 'no signal yet',
+    no_report: 'This device is registered but does not send its details (old RustDesk version or port 21114 closed).',
+    connect: 'Connect', edit: 'Rename', remove: 'Remove',
+    remove_q: 'Remove {n} from the list? It will come back if it reconnects.',
+    empty: 'No devices yet. Install RustDesk on a computer from “Set up a device”: it will appear here as soon as it starts.',
+    empty_search: 'No matching device.',
+    edit_t: 'Rename device', edit_label: 'Display name (customer, department, place…)', edit_note: 'Note', save: 'Save', cancel: 'Cancel',
+    dl_t: 'Windows: preconfigured RustDesk', dl_d: 'The official RustDesk program, renamed so it links to your server as soon as it starts. Send it to your customer: they open it, give you their ID and password, and that’s it. It runs without installation, or can be installed from its window.',
+    dl_btn: 'Download for Windows', dl_ver: 'RustDesk {v}, downloaded from GitHub',
+    ps_t: 'Windows: scripted installation', ps_d: 'Installs RustDesk as a service (access even with nobody at the screen), configures it for your server and shows the device ID. For your managed devices or bulk deployment.',
+    ps_pw: 'Create a permanent password', ps_pw_d: 'A random password, unique to each device, shown only once at the end of the script: access without the user having to accept.',
+    ps_btn: 'Download the script',
+    ps_s1: 'Copy <b>desktroo-remote.ps1</b> to the device.',
+    ps_s2: 'Open PowerShell <b>as administrator</b> in that folder.',
+    ps_s3: 'Run: <b>powershell -ExecutionPolicy Bypass -File .\\desktroo-remote.ps1</b>',
+    other_t: 'macOS, Linux, Android, iOS', other_d: 'Install RustDesk from rustdesk.com or the device’s store, then import the configuration.',
+    other_cfg: 'Configuration to import',
+    other_s1: 'Copy the configuration above.',
+    other_s2: 'In RustDesk: <b>Settings › Network › ID/Relay server</b>.',
+    other_s3: 'Click <b>Import</b> (clipboard icon); or enter the settings from the “Status” tab by hand.',
+    refresh: 'Refresh',
+    err_github_unreachable: 'GitHub is not responding: try again in a moment.',
+    err_not_ready: 'The server is not ready yet (key or public address missing).',
+    err_server_error: 'Server error.', err_net: 'The server is not responding.',
+    ago_now: 'just now', ago_m: '{n} min ago', ago_h: '{n} h ago', ago_d: '{n} d ago',
+    footer: 'RustDesk engine {v} (AGPL-3.0)',
+  },
+  es: {
+    nav_status: 'Estado', nav_devices: 'Equipos', nav_deploy: 'Instalar en un equipo', nav_logs: 'Registro',
+    t_status: 'Estado del servidor', s_status: 'Tu servidor de asistencia remota, en este NAS.',
+    t_devices: 'Equipos', s_devices: 'Los ordenadores vinculados a tu servidor.',
+    t_deploy: 'Instalar en un equipo', s_deploy: 'RustDesk, ya configurado para tu servidor.',
+    t_logs: 'Registro', s_logs: 'Mensajes del servidor RustDesk.',
+    host_missing_t: 'Dirección pública ausente o no válida',
+    host_missing: 'Los equipos no podrán llegar a este servidor. Reinstala la app desde Desktroo Apps indicando el nombre de dominio (o la IP fija) de tu router.',
+    st_id: 'Servidor de ID', st_relay: 'Relé', st_devices: 'Equipos en línea',
+    running: 'En marcha', stopped: 'Detenido', since: 'desde {d}', restarts: '{n} reinicio(s)',
+    dev_sub: '{n} equipo(s) conocido(s)',
+    srv_t: 'Ajustes del servidor', srv_d: 'Para introducir en RustDesk, en Ajustes › Red › Servidor de ID/relé, si configuras un equipo a mano.',
+    srv_host: 'Servidor de ID y servidor relé', srv_key: 'Clave', srv_api: 'Servidor API',
+    copy: 'Copiar', copied: 'Copiado',
+    ports_t: 'Puertos que redirigir en tu router', ports_d: 'Redirige estos puertos a este NAS para que los equipos lo alcancen desde Internet.',
+    ports_port: 'Puerto', ports_proto: 'Protocolo', ports_role: 'Función',
+    role_nat: 'Prueba del tipo de red', role_id: 'IDs y puesta en contacto', role_relay: 'Relé (cuando la conexión directa es imposible)',
+    role_api: 'Presencia y ficha de los equipos (lista de equipos)',
+    restart: 'Reiniciar el servidor', restart_ok: 'Reiniciando…',
+    search: 'Buscar un nombre, un ID, un usuario…',
+    online: 'En línea', in_session: 'En sesión', offline_ago: 'visto {d}', never: 'aún sin señal',
+    no_report: 'Este equipo está registrado pero no envía su ficha (versión antigua de RustDesk o puerto 21114 cerrado).',
+    connect: 'Conectar', edit: 'Renombrar', remove: 'Quitar',
+    remove_q: '¿Quitar {n} de la lista? Volverá si se reconecta.',
+    empty: 'Aún no hay equipos. Instala RustDesk en un ordenador desde «Instalar en un equipo»: aparecerá aquí en cuanto arranque.',
+    empty_search: 'Ningún equipo coincide.',
+    edit_t: 'Renombrar el equipo', edit_label: 'Nombre mostrado (cliente, departamento, lugar…)', edit_note: 'Nota', save: 'Guardar', cancel: 'Cancelar',
+    dl_t: 'Windows: RustDesk preconfigurado', dl_d: 'El programa oficial de RustDesk, renombrado para conectarse a tu servidor en cuanto se abre. Envíaselo a tu cliente: lo abre, te da su ID y su contraseña, y listo. Funciona sin instalación o puede instalarse desde su ventana.',
+    dl_btn: 'Descargar para Windows', dl_ver: 'RustDesk {v}, descargado de GitHub',
+    ps_t: 'Windows: instalación por script', ps_d: 'Instala RustDesk como servicio (acceso incluso sin nadie delante de la pantalla), lo configura para tu servidor y muestra el ID del equipo. Para tus equipos gestionados o un despliegue en serie.',
+    ps_pw: 'Crear una contraseña permanente', ps_pw_d: 'Una contraseña aleatoria, propia de cada equipo, mostrada una sola vez al final del script: acceso sin que el usuario tenga que aceptar.',
+    ps_btn: 'Descargar el script',
+    ps_s1: 'Copia <b>desktroo-remote.ps1</b> en el equipo.',
+    ps_s2: 'Abre PowerShell <b>como administrador</b> en esa carpeta.',
+    ps_s3: 'Ejecuta: <b>powershell -ExecutionPolicy Bypass -File .\\desktroo-remote.ps1</b>',
+    other_t: 'macOS, Linux, Android, iOS', other_d: 'Instala RustDesk desde rustdesk.com o la tienda del dispositivo y luego importa la configuración.',
+    other_cfg: 'Configuración que importar',
+    other_s1: 'Copia la configuración de arriba.',
+    other_s2: 'En RustDesk: <b>Ajustes › Red › Servidor de ID/relé</b>.',
+    other_s3: 'Pulsa <b>Importar</b> (icono del portapapeles); o introduce a mano los ajustes de la pestaña «Estado».',
+    refresh: 'Actualizar',
+    err_github_unreachable: 'GitHub no responde: inténtalo de nuevo en un momento.',
+    err_not_ready: 'El servidor aún no está listo (falta la clave o la dirección pública).',
+    err_server_error: 'Error del servidor.', err_net: 'El servidor no responde.',
+    ago_now: 'ahora mismo', ago_m: 'hace {n} min', ago_h: 'hace {n} h', ago_d: 'hace {n} d',
+    footer: 'Motor RustDesk {v} (AGPL-3.0)',
+  },
+};
+let LANG = 'fr';
+function pickLang(l) { l = String(l || '').slice(0, 2).toLowerCase(); return I18N[l] ? l : (l ? 'en' : 'fr'); }
+const T = (k, vars) => String((I18N[LANG] && I18N[LANG][k]) || I18N.fr[k] || k).replace(/\{(\w+)\}/g, (_, v) => (vars && v in vars) ? vars[v] : '');
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const notify = (t, l) => { if (window.desktroo && desktroo.inDesktroo) desktroo.notify(t, l); };
+
+let current = 'status', st = null, devs = [], editing = null;
+
+function applyLang() {
+  document.documentElement.lang = LANG;
+  document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = T(el.dataset.t); });
+  $('search').placeholder = T('search');
+  $('ps-steps').innerHTML = ['ps_s1', 'ps_s2', 'ps_s3'].map((k) => '<li>' + T(k) + '</li>').join('');
+  $('other-steps').innerHTML = ['other_s1', 'other_s2', 'other_s3'].map((k) => '<li>' + T(k) + '</li>').join('');
+  const o = $('log-proc').options; o[0].textContent = 'hbbs — ' + T('st_id'); o[1].textContent = 'hbbr — ' + T('st_relay');
+  show(current, true);
+  if (st) renderState();
+  renderDevices();
+}
+
+function ago(ms) {
+  if (!ms) return '';
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return T('ago_now');
+  if (s < 3600) return T('ago_m', { n: Math.round(s / 60) });
+  if (s < 86400) return T('ago_h', { n: Math.round(s / 3600) });
+  return T('ago_d', { n: Math.round(s / 86400) });
+}
+
+async function api(path, opts) {
+  let r;
+  try { r = await fetch(path, Object.assign({ cache: 'no-store', headers: { 'Content-Type': 'application/json' } }, opts || {})); }
+  catch (_) { throw new Error(T('err_net')); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(T('err_' + (data.error || 'server_error')));
+  return data;
+}
+
+function show(pane, keep) {
+  current = pane;
+  document.querySelectorAll('.dk-nav').forEach((b) => b.classList.toggle('active', b.dataset.pane === pane));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('active', p.id === 'pane-' + pane));
+  $('title').textContent = T('t_' + pane); $('sub').textContent = T('s_' + pane);
+  if (window.desktroo) desktroo.setTitle('Desktroo Remote — ' + T('t_' + pane));
+  if (!keep) { if (pane === 'logs') loadLogs(); if (pane === 'devices') loadDevices(); if (pane === 'deploy') loadClientVersion(); }
+}
+
+function procLine(name, p) {
+  $('dot-' + name).className = 'dot ' + (p.running ? 'on' : 'off');
+  $('st-' + name).textContent = p.running ? T('running') : T('stopped');
+  const parts = [];
+  if (p.running && p.since) parts.push(T('since', { d: new Date(p.since).toLocaleString(LANG) }));
+  if (p.restarts) parts.push(T('restarts', { n: p.restarts }));
+  $('st-' + name + '-sub').textContent = parts.join(' · ');
+}
+function renderState() {
+  procLine('hbbs', st.procs.hbbs); procLine('hbbr', st.procs.hbbr);
+  $('st-devices').textContent = st.counts.online;
+  $('st-devices-sub').textContent = T('dev_sub', { n: st.counts.total });
+  $('count').textContent = st.counts.online || '';
+  $('host-warn').style.display = st.hostOk ? 'none' : '';
+  $('v-host').textContent = st.host || '—';
+  $('v-key').textContent = st.key || '…';
+  $('v-api').textContent = st.api || '—';
+  $('v-cfg').textContent = st.config || '—';
+  const ready = !!st.config;
+  for (const id of ['dl-client', 'dl-ps']) $(id).classList.toggle('disabled', !ready);
+  $('side-note').textContent = st.serverVersion ? T('footer', { v: st.serverVersion }) : '';
+}
+async function loadState() {
+  try { st = await api('api/state'); renderState(); } catch (e) { $('sub').textContent = e.message; }
+}
+
+function renderDevices() {
+  const q = $('search').value.trim().toLowerCase();
+  const list = devs.filter((d) => !q || [d.id, d.label, d.hostname, d.username, d.os, d.note, d.ip].join(' ').toLowerCase().includes(q));
+  $('devs').innerHTML = list.map((d) => {
+    const name = d.label || d.hostname || d.id;
+    const state = d.inSession ? `<span class="badge busy">${esc(T('in_session'))}</span>` : (d.online ? `<span class="badge">${esc(T('online'))}</span>` : '');
+    const seen = d.online ? '' : (d.lastSeen ? T('offline_ago', { d: ago(d.lastSeen) }) : T('never'));
+    const meta = [d.label && d.hostname ? d.hostname : '', d.username, d.os, d.ip, seen].filter(Boolean).map(esc).join(' · ');
+    const dot = d.inSession ? 'busy' : (d.online ? 'on' : '');
+    return `<li data-id="${esc(d.id)}"><span class="dot ${dot}"></span>
+      <div class="main"><div class="name">${esc(name)}${state}</div>
+        <div class="meta"><span class="id">${esc(d.id)}</span>${meta ? ' · ' + meta : ''}</div>
+        ${d.reporting ? '' : `<div class="meta" title="${esc(T('no_report'))}">${esc(T('no_report'))}</div>`}
+        ${d.note ? `<div class="note">${esc(d.note)}</div>` : ''}</div>
+      <div class="btns"><a class="dk-btn primary" href="rustdesk://connection/new/${encodeURIComponent(d.id)}">${esc(T('connect'))}</a>
+        <button class="dk-btn" data-act="copy">${esc(T('copy'))} ID</button>
+        <button class="dk-btn" data-act="edit">${esc(T('edit'))}</button>
+        <button class="dk-btn danger" data-act="remove">${esc(T('remove'))}</button></div></li>`;
+  }).join('');
+  const empty = $('devs-empty');
+  empty.style.display = list.length ? 'none' : '';
+  empty.textContent = devs.length ? T('empty_search') : T('empty');
+}
+async function loadDevices() {
+  try { devs = await api('api/devices'); renderDevices(); } catch (e) { notify(e.message, 'error'); }
+}
+
+async function loadLogs() {
+  try {
+    const r = await api('api/logs?proc=' + $('log-proc').value);
+    const el = $('logs'); el.textContent = r.lines.join('\n') || '—'; el.scrollTop = el.scrollHeight;
+  } catch (e) { $('logs').textContent = e.message; }
+}
+async function loadClientVersion() {
+  $('dl-ver').textContent = '';
+  try { const r = await api('api/client-version'); $('dl-ver').textContent = T('dl_ver', { v: r.version }); } catch (_) {}
+}
+
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (_) { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  if (btn) { const old = btn.textContent; btn.textContent = T('copied'); setTimeout(() => { btn.textContent = old; }, 1400); }
+}
+
+document.querySelectorAll('.dk-nav').forEach((b) => b.addEventListener('click', () => show(b.dataset.pane)));
+document.addEventListener('click', (ev) => {
+  const c = ev.target.closest('[data-copy]');
+  if (c) { const v = $(c.dataset.copy).textContent; if (v && v !== '—' && v !== '…') copyText(v, c); }
+  const a = ev.target.closest('a.disabled'); if (a) ev.preventDefault();
+});
+$('search').addEventListener('input', renderDevices);
+$('devs').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button[data-act]'); if (!b) return;
+  const id = b.closest('li').dataset.id, d = devs.find((x) => x.id === id); if (!d) return;
+  if (b.dataset.act === 'copy') return copyText(id, b);
+  if (b.dataset.act === 'edit') {
+    editing = id; $('edit-id').textContent = id + (d.hostname ? ' · ' + d.hostname : '');
+    $('edit-label').value = d.label; $('edit-note').value = d.note; $('edit').showModal(); $('edit-label').focus(); return;
+  }
+  if (b.dataset.act === 'remove' && confirm(T('remove_q', { n: d.label || d.hostname || id }))) {
+    try { await api('api/devices/' + encodeURIComponent(id), { method: 'DELETE' }); await loadDevices(); loadState(); }
+    catch (e) { alert(e.message); }
+  }
+});
+$('edit-cancel').addEventListener('click', () => $('edit').close());
+$('edit-save').addEventListener('click', async () => {
+  try {
+    await api('api/devices/' + encodeURIComponent(editing), { method: 'PUT', body: JSON.stringify({ label: $('edit-label').value, note: $('edit-note').value }) });
+    $('edit').close(); loadDevices();
+  } catch (e) { alert(e.message); }
+});
+$('restart').addEventListener('click', async () => {
+  try { await api('api/restart', { method: 'POST' }); $('restart-msg').textContent = T('restart_ok'); setTimeout(() => { $('restart-msg').textContent = ''; loadState(); }, 3000); }
+  catch (e) { alert(e.message); }
+});
+$('ps-pw').addEventListener('change', () => { $('dl-ps').href = 'deploy/windows.ps1' + ($('ps-pw').checked ? '?password=1' : ''); });
+$('log-proc').addEventListener('change', loadLogs);
+$('log-refresh').addEventListener('click', loadLogs);
+
+if (window.desktroo) desktroo.onTheme((t) => { const l = pickLang(t && t.lang); if (l !== LANG) { LANG = l; applyLang(); } });
+LANG = pickLang(document.documentElement.lang === 'fr' ? (navigator.language || 'fr') : document.documentElement.lang);
+applyLang();
+loadState(); loadDevices();
+setInterval(() => { if (document.hidden) return; loadState(); if (current === 'devices') loadDevices(); }, 10000);
+</script>
+</body>
+</html>
