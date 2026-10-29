@@ -650,8 +650,10 @@ function brandFiles() {
     'logo_light.png': light || dark || brandDefault('brand/logo_light.png'),
     'logo_dark.png': dark || light || brandDefault('brand/logo_dark.png'),
     'icon.png': icon || brandDefault('brand/icon.png'),
-    'desktroo-remote.ico': icon ? pngToIco(icon) : brandDefault('brand/desktroo-remote.ico'),
   };
+  // Nom tiré du contenu : Windows garde les icônes en cache par chemin ; une nouvelle icône doit donc changer de nom.
+  const ico = icon ? pngToIco(icon) : brandDefault('brand/desktroo-remote.ico');
+  files['icon-' + crypto.createHash('sha256').update(ico).digest('hex').slice(0, 10) + '.ico'] = ico;
   if (!icon) files['icon.svg'] = brandDefault('icon.svg');
   return files;
 }
@@ -678,7 +680,8 @@ if (Test-Path $dst) {
   }
   Copy-Item (Join-Path $src 'logo_light.png') (Join-Path $dst 'logo.png') -Force
 }
-$ico = Join-Path $src 'desktroo-remote.ico'
+$ico = (Get-ChildItem $src -Filter *.ico | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+if (-not $ico) { return }
 $sh = New-Object -ComObject WScript.Shell
 $places = @((Join-Path $env:PUBLIC 'Desktop'), (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'))
 Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
@@ -699,6 +702,7 @@ Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
     '# Dossier reserve a SYSTEM et aux administrateurs : la tache qui l\'utilise tourne en SYSTEM.',
     'icacls $brand /inheritance:r /grant:r \'*S-1-5-18:(OI)(CI)F\' \'*S-1-5-32-544:(OI)(CI)F\' \'*S-1-5-32-545:(OI)(CI)RX\' | Out-Null',
     'Remove-Item (Join-Path $brand \'icon.svg\') -Force -ErrorAction SilentlyContinue',
+    'Get-ChildItem $brand -Filter *.ico | Remove-Item -Force -ErrorAction SilentlyContinue',
     '[IO.File]::WriteAllText((Join-Path $brand \'name.txt\'), ' + psq(name) + ', (New-Object Text.UTF8Encoding $false))',
     ...files.map(([n, b64]) => `[IO.File]::WriteAllBytes((Join-Path $brand '${n}'), [Convert]::FromBase64String('${b64}'))`),
     '$apply = @\'',
@@ -710,6 +714,8 @@ Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
     '$t2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 6) -RepetitionDuration (New-TimeSpan -Days 3650)',
     'Register-ScheduledTask -TaskName \'Desktroo Remote - habillage\' -Action $act -Trigger @($t1, $t2) -User \'SYSTEM\' -RunLevel Highest -Force | Out-Null',
     '& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $brand \'habillage.ps1\')',
+    '# Cache des icones de Windows : l\'icone des raccourcis s\'affiche tout de suite.',
+    '& (Join-Path $env:windir \'System32\ie4uinit.exe\') -show 2>$null',
     '',
   ].join('\r\n');
   brandCache = { v: brandVersion, text };
