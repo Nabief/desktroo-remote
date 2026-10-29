@@ -87,11 +87,26 @@ function readKey() {
 }
 function apiUrl() { return HOST ? `http://${HOST}:${PORTS.api}` : ''; }
 // Format lu par le client RustDesk (custom_server.rs) : JSON {host, key, api, relay}, base64 « URL », renversé.
-// Il s'importe par « rustdesk --config <chaîne> » ou dans le nom du programme : rustdesk-licensed-<chaîne>.exe.
+// Il s'importe par « rustdesk --config <chaîne> », dans le nom du programme (rustdesk-licensed-<chaîne>.exe) ou par le
+// bouton « Importer » des réglages réseau.
+// - Courte : les navigateurs raccourcissent les noms de fichier trop longs (un nom de 248 caractères est arrivé coupé à
+//   187 : configuration illisible, le client part sur le serveur public). Seuls l'adresse et la clé y figurent : le
+//   client en déduit l'API (port 21114) et hbbs lui donne le relais.
+// - Sûre : le nom comme « --config » passent par un découpage sur « -- », et un « - » collé à « -licensed- » est
+//   absorbé : la chaîne ne doit ni contenir « -- » ni commencer ou finir par « - ». Des espaces (sans effet sur le
+//   JSON) changent l'encodage jusqu'à en obtenir une sûre.
 function configString(key) {
   if (!HOST || !key) return '';
-  const json = JSON.stringify({ host: HOST, key, api: apiUrl(), relay: `${HOST}:${PORTS.relay}` });
-  return Buffer.from(json, 'utf8').toString('base64url').split('').reverse().join('');
+  for (let n = 0; n < 64; n++) {
+    const json = `{"host":"${HOST}",${' '.repeat(n)}"key":"${key}"}`;
+    const c = Buffer.from(json, 'utf8').toString('base64url').split('').reverse().join('');
+    if (!c.includes('--') && !c.startsWith('-') && !c.endsWith('-')) return c;
+  }
+  return '';
+}
+function clientFilename(key) {
+  const c = configString(key);
+  return c ? `rustdesk-licensed-${c}.exe` : '';
 }
 
 // ── Postes : base de hbbs (enregistrés) + présence et fiches envoyées par les clients ──
@@ -289,13 +304,13 @@ async function latestClientVersion() {
   return m[1];
 }
 
-async function streamClient(res, cfg) {
+async function streamClient(res, filename) {
   const v = await latestClientVersion();
   const r = await fetch(`https://github.com/rustdesk/rustdesk/releases/download/${v}/rustdesk-${v}-x86_64.exe`, { signal: AbortSignal.timeout(120000) });
   if (!r.ok || !r.body) throw fail('github_unreachable', 502);
   const headers = Object.assign({
     'Content-Type': 'application/vnd.microsoft.portable-executable',
-    'Content-Disposition': `attachment; filename="rustdesk-licensed-${cfg}.exe"`,
+    'Content-Disposition': `attachment; filename="${filename}"`,
     'Cache-Control': 'no-store', 'X-RustDesk-Version': v,
   }, HEADERS);
   if (r.headers.get('content-length')) headers['Content-Length'] = r.headers.get('content-length');
@@ -381,7 +396,7 @@ function state() {
   return {
     version: VERSION, serverVersion: RD_SERVER_VERSION,
     host: HOST, hostOk: HOST_RE.test(HOST), key, config: cfg, api: apiUrl(), ports: PORTS,
-    filename: cfg ? `rustdesk-licensed-${cfg}.exe` : '',
+    filename: clientFilename(key),
     procs: { hbbs: procState(procs.hbbs), hbbr: procState(procs.hbbr) },
     sqlite: !!DatabaseSync,
     counts: { total: list.length, online: list.filter((d) => d.online).length, reporting: list.filter((d) => d.reporting).length },
@@ -426,10 +441,10 @@ async function panelRoute(req, res, url, user) {
       { 'Content-Disposition': 'attachment; filename="desktroo-remote.ps1"' });
   }
   if (p === '/download/windows' && m === 'GET') {
-    const cfg = configString(readKey());
-    if (!cfg) throw fail('not_ready', 409);
+    const name = clientFilename(readKey());
+    if (!name) throw fail('not_ready', 409);
     log('client Windows préconfiguré téléchargé par', user);
-    return streamClient(res, cfg);
+    return streamClient(res, name);
   }
   if (p === '/api/client-version' && m === 'GET') return json(res, 200, { version: await latestClientVersion() });
   if (m === 'GET' && FILES[p]) {

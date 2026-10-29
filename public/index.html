@@ -125,6 +125,9 @@
           <h2 data-t="dl_t"></h2>
           <p class="dim" data-t="dl_d"></p>
           <div class="actions"><a class="dk-btn primary" id="dl-client" href="download/windows" data-t="dl_btn"></a><span class="dim" id="dl-ver"></span></div>
+          <div class="lbl" data-t="dl_name"></div>
+          <div class="field"><div class="val mono" id="v-fname">…</div><button class="dk-btn" data-copy="v-fname" data-t="copy"></button></div>
+          <p class="dim" data-t="dl_name_d"></p>
         </div>
         <div class="card">
           <h2 data-t="ps_t"></h2>
@@ -197,6 +200,7 @@ const I18N = {
     edit_t: 'Renommer le poste', edit_label: 'Nom affiché (client, service, lieu…)', edit_note: 'Note', save: 'Enregistrer', cancel: 'Annuler',
     dl_t: 'Windows : RustDesk préconfiguré', dl_d: 'Le programme officiel de RustDesk, renommé pour se relier à votre serveur dès son lancement. Envoyez-le à votre client : il l’ouvre, vous donne son ID et son mot de passe, et c’est tout. Il fonctionne sans installation ou peut être installé depuis sa fenêtre.',
     dl_btn: 'Télécharger pour Windows', dl_ver: 'RustDesk {v}, téléchargé depuis GitHub',
+    dl_name: 'Nom du fichier', dl_name_d: 'Le réglage du serveur est dans ce nom : s’il a été changé (navigateur, messagerie), le programme se relie au serveur public de RustDesk. Renommez-le alors exactement ainsi.',
     ps_t: 'Windows : installation par script', ps_d: 'Installe RustDesk comme service (accès même sans personne devant l’écran), le règle pour votre serveur et affiche l’ID du poste. Pour vos postes gérés ou un déploiement en série.',
     ps_pw: 'Créer un mot de passe permanent', ps_pw_d: 'Un mot de passe aléatoire, propre à chaque poste, affiché une seule fois à la fin du script : accès sans que l’utilisateur ait à accepter.',
     ps_btn: 'Télécharger le script',
@@ -244,6 +248,7 @@ const I18N = {
     edit_t: 'Rename device', edit_label: 'Display name (customer, department, place…)', edit_note: 'Note', save: 'Save', cancel: 'Cancel',
     dl_t: 'Windows: preconfigured RustDesk', dl_d: 'The official RustDesk program, renamed so it links to your server as soon as it starts. Send it to your customer: they open it, give you their ID and password, and that’s it. It runs without installation, or can be installed from its window.',
     dl_btn: 'Download for Windows', dl_ver: 'RustDesk {v}, downloaded from GitHub',
+    dl_name: 'File name', dl_name_d: 'The server setting is in this name: if it was changed (browser, email), the program links to RustDesk’s public server. Rename it to exactly this.',
     ps_t: 'Windows: scripted installation', ps_d: 'Installs RustDesk as a service (access even with nobody at the screen), configures it for your server and shows the device ID. For your managed devices or bulk deployment.',
     ps_pw: 'Create a permanent password', ps_pw_d: 'A random password, unique to each device, shown only once at the end of the script: access without the user having to accept.',
     ps_btn: 'Download the script',
@@ -291,6 +296,7 @@ const I18N = {
     edit_t: 'Renombrar el equipo', edit_label: 'Nombre mostrado (cliente, departamento, lugar…)', edit_note: 'Nota', save: 'Guardar', cancel: 'Cancelar',
     dl_t: 'Windows: RustDesk preconfigurado', dl_d: 'El programa oficial de RustDesk, renombrado para conectarse a tu servidor en cuanto se abre. Envíaselo a tu cliente: lo abre, te da su ID y su contraseña, y listo. Funciona sin instalación o puede instalarse desde su ventana.',
     dl_btn: 'Descargar para Windows', dl_ver: 'RustDesk {v}, descargado de GitHub',
+    dl_name: 'Nombre del archivo', dl_name_d: 'El ajuste del servidor está en este nombre: si se ha cambiado (navegador, correo), el programa se conecta al servidor público de RustDesk. Renómbralo exactamente así.',
     ps_t: 'Windows: instalación por script', ps_d: 'Instala RustDesk como servicio (acceso incluso sin nadie delante de la pantalla), lo configura para tu servidor y muestra el ID del equipo. Para tus equipos gestionados o un despliegue en serie.',
     ps_pw: 'Crear una contraseña permanente', ps_pw_d: 'Una contraseña aleatoria, propia de cada equipo, mostrada una sola vez al final del script: acceso sin que el usuario tenga que aceptar.',
     ps_btn: 'Descargar el script',
@@ -376,6 +382,7 @@ function renderState() {
   $('v-key').textContent = st.key || '…';
   $('v-api').textContent = st.api || '—';
   $('v-cfg').textContent = st.config || '—';
+  $('v-fname').textContent = st.filename || '—';
   const ready = !!st.config;
   for (const id of ['dl-client', 'dl-ps']) $(id).classList.toggle('disabled', !ready);
   $('side-note').textContent = st.serverVersion ? T('footer', { v: st.serverVersion }) : '';
