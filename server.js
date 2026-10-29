@@ -605,7 +605,7 @@ function windowsCmd(ps) {
 // Sans toucher aux programmes signés (rustdesk.exe, *.dll) : le client affiche « assets/logo_light.png » ou
 // « logo_dark.png » en bandeau s'il les trouve (flutter/lib/common.dart, loadLogo), et « assets/icon.png » comme icône
 // (loadIcon). Ces fichiers et les raccourcis sont réappliqués par une tâche planifiée (au démarrage, puis toutes les
-// 6 h) : une mise à jour de RustDesk les remet d'origine. Le dossier de la tâche n'est modifiable que par SYSTEM et
+// heures) : une mise à jour de RustDesk les remet d'origine. RustDesk désinstallé, elle retire nos raccourcis et se supprime. Le dossier de la tâche n'est modifiable que par SYSTEM et
 // les administrateurs, puisqu'elle s'exécute en SYSTEM.
 // Habillage personnalisable : nom (raccourcis, fichiers téléchargés) et images, réglés dans le panneau (onglet
 // « Habillage ») et gardés dans /data/brand ; par défaut, ceux de Desktroo Remote (public/brand).
@@ -671,6 +671,23 @@ $src = $PSScriptRoot
 $name = ''
 try { $name = ([IO.File]::ReadAllText((Join-Path $src 'name.txt'))).Trim() } catch { }
 if (-not $name) { $name = 'Desktroo Remote' }
+$places = @((Join-Path $env:PUBLIC 'Desktop'), (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'))
+# RustDesk desinstalle (programme et cle de desinstallation absents, encore une minute apres pour ne pas confondre avec
+# une mise a jour) : on retire nos raccourcis, puis cette tache et ce dossier.
+$exe = Join-Path $env:ProgramFiles 'RustDesk\rustdesk.exe'
+$uk = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\RustDesk'
+if (-not (Test-Path $exe) -and -not (Test-Path $uk)) {
+  Start-Sleep -Seconds 60
+  if (-not (Test-Path $exe) -and -not (Test-Path $uk)) {
+    $sh = New-Object -ComObject WScript.Shell
+    Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
+      if ($sh.CreateShortcut($_.FullName).TargetPath -like '*\RustDesk\rustdesk.exe') { Remove-Item $_.FullName -Force }
+    }
+    Unregister-ScheduledTask -TaskName 'Desktroo Remote - habillage' -Confirm:$false
+    Start-Process cmd.exe -ArgumentList ('/c timeout /t 5 /nobreak >nul & rmdir /s /q "' + $src + '"') -WindowStyle Hidden
+    exit
+  }
+}
 $dst = Join-Path $env:ProgramFiles 'RustDesk\data\flutter_assets\assets'
 if (Test-Path $dst) {
   foreach ($f in 'logo_light.png','logo_dark.png','icon.png','icon.svg') {
@@ -683,7 +700,6 @@ if (Test-Path $dst) {
 $ico = (Get-ChildItem $src -Filter *.ico | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 if (-not $ico) { return }
 $sh = New-Object -ComObject WScript.Shell
-$places = @((Join-Path $env:PUBLIC 'Desktop'), (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'))
 Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
   $l = $sh.CreateShortcut($_.FullName)
   if ($l.TargetPath -notlike '*\RustDesk\rustdesk.exe') { return }
@@ -711,7 +727,7 @@ Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
     'Set-Content -Path (Join-Path $brand \'habillage.ps1\') -Value $apply -Encoding UTF8',
     '$act = New-ScheduledTaskAction -Execute \'powershell.exe\' -Argument (\'-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "\' + (Join-Path $brand \'habillage.ps1\') + \'"\')',
     '$t1 = New-ScheduledTaskTrigger -AtStartup',
-    '$t2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 6) -RepetitionDuration (New-TimeSpan -Days 3650)',
+    '$t2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 3650)',
     'Register-ScheduledTask -TaskName \'Desktroo Remote - habillage\' -Action $act -Trigger @($t1, $t2) -User \'SYSTEM\' -RunLevel Highest -Force | Out-Null',
     '& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $brand \'habillage.ps1\')',
     '# Cache des icones de Windows : l\'icone des raccourcis s\'affiche tout de suite.',

@@ -28,8 +28,8 @@ Il fait tourner le serveur RustDesk officiel (hbbs, hbbr ; AGPL-3.0, non modifi�
 - **Habillage** (dans les scripts Windows) : sans toucher aux programmes signés, dépose `logo_light.png`,
   `logo_dark.png` (bandeau affiché par le client, `loadLogo`), `icon.png`/`icon.svg` (`loadIcon`) dans
   `RustDesk\data\flutter_assets\assets`, renomme les raccourcis « Desktroo Remote » avec `desktroo-remote.ico`.
-  Une tâche planifiée SYSTEM (« Desktroo Remote - habillage », au démarrage puis toutes les 6 h) le réapplique après
-  les mises à jour ; son dossier `C:\ProgramData\DesktrooRemote` n'est modifiable que par SYSTEM et les administrateurs.
+  Une tâche planifiée SYSTEM (« Desktroo Remote - habillage », au démarrage puis toutes les heures) le réapplique après
+  les mises à jour, et retire raccourcis, tâche et dossier une fois RustDesk désinstallé ; son dossier `C:\ProgramData\DesktrooRemote` n'est modifiable que par SYSTEM et les administrateurs.
   Images : `public/brand/`. Le nom « RustDesk » (titre, textes) reste : il est compilé dans la bibliothèque signée.
 - **Script Windows** (`desktroo-remote.ps1`) : installe RustDesk comme service, vérifie la signature du programme,
   applique la configuration (`--config`), en option un mot de passe permanent aléatoire, et affiche l'ID.
