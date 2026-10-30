@@ -1,11 +1,12 @@
 # Desktroo Remote
 
 Serveur d'assistance à distance auto-hébergé, installé depuis Desktroo Apps, les apps de [Desktroo](https://desktroo.fr).
-Il fait tourner le serveur RustDesk officiel (hbbs, hbbr ; AGPL-3.0, non modifié) et le pilote depuis le bureau.
+Il fait tourner le serveur RustDesk (hbbs, hbbr ; AGPL-3.0) et le pilote depuis le bureau. hbbr est le programme officiel ;
+hbbs est compilé depuis son source officiel avec une modification (voir « Modification de hbbs »).
 
 - **Serveur** : `server.js` lance et surveille `hbbs` (identifiants, ports 21115-21116) et `hbbr` (relais, port 21117),
   avec `-k _` (seuls les clients qui ont la clé du serveur sont acceptés). Clé et base des postes : `/data`.
-  Les binaires viennent des versions officielles, vérifiés par empreinte SHA-256 dans le `Dockerfile`.
+  hbbr vient de la version officielle, vérifié par empreinte SHA-256 dans le `Dockerfile` ; hbbs est compilé (voir plus bas).
 - **Adresse publique** : demandée à l'installation (`install_fields` → `RD_PUBLIC_HOST`), inscrite dans la configuration
   des postes et passée à hbbs comme relais.
 - **Panneau** (port 8080) : derrière la session Desktroo ; refuse toute requête sans le secret posé par Desktroo.
@@ -37,6 +38,17 @@ Il fait tourner le serveur RustDesk officiel (hbbs, hbbr ; AGPL-3.0, non modifi�
 Données : `/data/devices.json` (fiches, noms, notes), `/data/id_ed25519*` (clé du serveur : à sauvegarder),
 `/data/db_v2.sqlite3` (base de hbbs).
 
+## Modification de hbbs
+
+`hbbs-patch/0001-tcp-key-exchange.patch` (AGPL-3.0, comme hbbs) : à l'ouverture d'une connexion TCP sur le port 21116,
+hbbs envoie une clé éphémère signée par la clé du serveur (`KeyExchange`) ; si le client répond, la suite de la
+connexion est chiffrée. Les clients RustDesk connectés à un compte l'exigent : avec le hbbs d'origine, ils échouent sur
+« Failed to secure tcp: deadline has elapsed ». Un client qui ne répond pas continue en clair, comme avant.
+
+Le `Dockerfile` récupère le source du tag officiel (commit vérifié), applique le patch et compile (Rust, Alpine, programme
+statique). Le workflow construit amd64 et arm64 chacun sur une machine GitHub de son type, puis les réunit sous le tag.
+Un push sur `main` qui touche la construction lance une construction d'essai, sans publier.
+
 ## Publier une version
 
 `powershell -ExecutionPolicy Bypass -File publish-app.ps1 remote 1.0.0 "première version"` depuis le dépôt Desktroo.
@@ -44,7 +56,8 @@ La fiche du catalogue est dans `tools\store\apps\remote.json` (canal `test` pour
 
 ## Mettre à jour le serveur RustDesk
 
-Changer `RUSTDESK_SERVER_VERSION` et les deux empreintes `SHA256_*` dans le `Dockerfile`
-(`sha256sum rustdesk-server-linux-amd64.zip rustdesk-server-linux-arm64v8.zip`), puis publier une version.
+Changer `RUSTDESK_SERVER_VERSION` (aux trois endroits), `RUSTDESK_SERVER_COMMIT` (commit du tag) et les deux empreintes
+`SHA256_*` dans le `Dockerfile` (`sha256sum rustdesk-server-linux-amd64.zip rustdesk-server-linux-arm64v8.zip`), vérifier
+que le patch s'applique encore (`git apply --check`), puis publier une version.
 
 © 2026 Mdm-services.fr. Tous droits réservés. RustDesk Server : AGPL-3.0, voir `NOTICE`.

@@ -3,8 +3,8 @@
 //
 // Serveur d'assistance à distance auto-hébergé, installé depuis Desktroo Apps.
 // Ce programme :
-//   - lance et surveille le serveur RustDesk officiel, non modifié (hbbs : identifiants, hbbr : relais ; AGPL-3.0,
-//     https://github.com/rustdesk/rustdesk-server) ; ses données (clé, base des postes) sont dans /data ;
+//   - lance et surveille le serveur RustDesk (hbbs : identifiants, compilé avec l'échange de clés de hbbs-patch/ ;
+//     hbbr : relais, officiel ; AGPL-3.0, https://github.com/rustdesk/rustdesk-server) ; ses données (clé, base des postes) sont dans /data ;
 //   - port 8080 : le panneau, derrière la session Desktroo (en-têtes posés par son nginx, acceptés seulement avec le
 //     secret de cette installation) ;
 //   - port 8081 (ouvert par Desktroo sur le port 21114 du NAS) : l'API que les clients RustDesk appellent d'eux-mêmes

@@ -1,17 +1,30 @@
-# Construit et publie l'image sur ghcr.io à chaque tag vX.Y.Z, puis affiche l'empreinte à reporter dans le catalogue.
+# Construit l'image et la publie sur ghcr.io à chaque tag vX.Y.Z, puis affiche l'empreinte à reporter dans le catalogue.
+# hbbs est compilé depuis son source (voir hbbs-patch/) : chaque architecture est construite sur une machine de son type
+# (compiler du Rust en émulation prendrait plus d'une heure), puis les deux sont réunies sous le même tag.
+# Un push sur main qui touche la construction lance une construction d'essai, sans rien publier.
 name: Publier l'image
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    paths: ['Dockerfile', 'hbbs-patch/**', '.github/workflows/publish.yml']
+  workflow_dispatch:
 permissions:
   contents: read
   packages: write
+env:
+  IMAGE: ghcr.io/nabief/desktroo-remote
+  PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') }}
 jobs:
-  image:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      matrix:
+        include:
+          - { platform: linux/amd64, runner: ubuntu-24.04 }
+          - { platform: linux/arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -22,15 +35,49 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
+          platforms: ${{ matrix.platform }}
           build-args: |
             APP_VERSION=${{ github.ref_name }}
-          tags: |
-            ghcr.io/nabief/desktroo-remote:${{ github.ref_name }}
-            ghcr.io/nabief/desktroo-remote:latest
+          outputs: ${{ env.PUBLISH == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE) || 'type=cacheonly' }}
+          cache-from: type=gha,scope=${{ matrix.runner }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.runner }}
+      - if: env.PUBLISH == 'true'
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          d="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${d#sha256:}"
+      - if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image multi-architecture
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create -t "$IMAGE:${{ github.ref_name }}" -t "$IMAGE:latest" \
+            $(printf "$IMAGE@sha256:%s " *)
       - name: Empreinte pour le catalogue
         run: |
+          d=$(docker buildx imagetools inspect "$IMAGE:${{ github.ref_name }}" --format '{{json .Manifest}}' | jq -r .digest)
           echo "### Image publiée" >> $GITHUB_STEP_SUMMARY
           echo "Version : \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "Empreinte à mettre dans catalog.json : \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Empreinte à mettre dans catalog.json : \`$d\`" >> $GITHUB_STEP_SUMMARY

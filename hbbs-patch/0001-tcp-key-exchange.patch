@@ -1,0 +1,128 @@
+Desktroo Remote — modification de hbbs (RustDesk Server 1.1.16, AGPL-3.0)
+
+Échange de clés sur la connexion TCP du port 21116 : à l'ouverture, hbbs envoie une clé publique
+éphémère signée avec sa clé de serveur (KeyExchange) ; si le client répond par sa propre clé et une
+clé de session scellée, la suite de la connexion est chiffrée (hbb_common::tcp::Encrypt). Un client
+qui ne répond pas continue en clair, comme avec le hbbs d'origine.
+
+Les clients RustDesk connectés à un compte (jeton d'accès) exigent cet échange avant de demander une
+connexion ; sans lui, ils échouent avec « Failed to secure tcp: deadline has elapsed ».
+
+Base : https://github.com/rustdesk/rustdesk-server, tag 1.1.16 (73523b31cfd25d77dee862e6fc9f5e1fb5e485ef).
+Appliqué et compilé par le Dockerfile de ce dépôt (git apply).
+
+diff --git a/src/rendezvous_server.rs b/src/rendezvous_server.rs
+index dff45eb..ca2572e 100644
+--- a/src/rendezvous_server.rs
++++ b/src/rendezvous_server.rs
+@@ -16,7 +16,7 @@ use hbb_common::{
+         register_pk_response::Result::{TOO_FREQUENT, UUID_MISMATCH},
+         *,
+     },
+-    tcp::{listen_any, FramedStream},
++    tcp::{listen_any, Encrypt, FramedStream},
+     timeout,
+     tokio::{
+         self,
+@@ -31,7 +31,7 @@ use hbb_common::{
+     AddrMangle, ResultType,
+ };
+ use ipnetwork::Ipv4Network;
+-use sodiumoxide::crypto::sign;
++use sodiumoxide::crypto::{box_, sign};
+ use std::{
+     collections::HashMap,
+     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+@@ -51,7 +51,8 @@ const REG_TIMEOUT: i64 = 30_000;
+ type TcpStreamSink = SplitSink<Framed<TcpStream, BytesCodec>, Bytes>;
+ type WsSink = SplitSink<tokio_tungstenite::WebSocketStream<TcpStream>, tungstenite::Message>;
+ enum Sink {
+-    TcpStream(TcpStreamSink),
++    // Le chiffrement des messages envoyés suit la connexion quand elle est mise de côté (tcp_punch).
++    TcpStream(TcpStreamSink, Option<Encrypt>),
+     Ws(WsSink),
+ }
+ type Sender = mpsc::UnboundedSender<Data>;
+@@ -823,8 +824,12 @@ impl RendezvousServer {
+         if let Some(sink) = sink.as_mut() {
+             if let Ok(bytes) = msg.write_to_bytes() {
+                 match sink {
+-                    Sink::TcpStream(s) => {
+-                        allow_err!(s.send(Bytes::from(bytes)).await);
++                    Sink::TcpStream(s, enc) => {
++                        let data = match enc.as_mut() {
++                            Some(enc) => Bytes::from(enc.enc(&bytes)),
++                            None => Bytes::from(bytes),
++                        };
++                        allow_err!(s.send(data).await);
+                     }
+                     Sink::Ws(ws) => {
+                         allow_err!(ws.send(tungstenite::Message::Binary(bytes)).await);
+@@ -1178,8 +1183,44 @@ impl RendezvousServer {
+             }
+         } else {
+             let (a, mut b) = Framed::new(stream, BytesCodec::new()).split();
+-            sink = Some(Sink::TcpStream(a));
+-            while let Ok(Some(Ok(bytes))) = timeout(30_000, b.next()).await {
++            sink = Some(Sink::TcpStream(a, None));
++            // Échange de clés du TCP, comme RustDesk Server Pro : un client connecté à un compte (jeton) l'exige
++            // avant toute demande ; sans lui il abandonne (« Failed to secure tcp: deadline has elapsed »).
++            // Phase 1 : notre clé publique de connexion, signée avec la clé du serveur. Un client qui ne fait pas
++            // l'échange ignore ce message et la connexion reste en clair, comme avant.
++            let our_sk = if key.is_empty() { None } else { self.key_exchange_phase1(&mut sink).await };
++            let mut dec: Option<Encrypt> = None;
++            while let Ok(Some(Ok(mut bytes))) = timeout(30_000, b.next()).await {
++                if let Some(d) = dec.as_mut() {
++                    if let Err(err) = d.dec(&mut bytes) {
++                        log::debug!("Tcp connection from {:?}: decryption failed: {}", addr, err);
++                        break;
++                    }
++                } else if let Some(sk) = our_sk.as_ref() {
++                    // Phase 2 : le client renvoie sa clé publique et la clé symétrique scellée pour la nôtre.
++                    if let Ok(RendezvousMessage { union: Some(rendezvous_message::Union::KeyExchange(ex)), .. }) =
++                        RendezvousMessage::parse_from_bytes(&bytes)
++                    {
++                        if ex.keys.len() != 2 {
++                            log::debug!("Tcp connection from {:?}: invalid key exchange", addr);
++                            break;
++                        }
++                        match Encrypt::decode(&ex.keys[1], &ex.keys[0], sk) {
++                            Ok(k) => {
++                                if let Some(Sink::TcpStream(_, enc)) = sink.as_mut() {
++                                    *enc = Some(Encrypt::new(k.clone()));
++                                }
++                                dec = Some(Encrypt::new(k));
++                                log::debug!("Tcp connection from {:?} secured", addr);
++                                continue;
++                            }
++                            Err(err) => {
++                                log::debug!("Tcp connection from {:?}: key exchange failed: {}", addr, err);
++                                break;
++                            }
++                        }
++                    }
++                }
+                 if !self.handle_tcp(&bytes, &mut sink, addr, key, ws).await {
+                     break;
+                 }
+@@ -1218,6 +1259,20 @@ impl RendezvousServer {
+     }
+ 
+     #[inline]
++    // Échange de clés, phase 1 : une paire de clés propre à cette connexion ; la clé publique part signée avec la clé
++    // du serveur (le client la vérifie avec la clé qu'il connaît). Rend la clé secrète pour la phase 2.
++    async fn key_exchange_phase1(&self, sink: &mut Option<Sink>) -> Option<box_::SecretKey> {
++        let sk = self.inner.sk.as_ref()?;
++        let (our_pk, our_sk) = box_::gen_keypair();
++        let mut msg_out = RendezvousMessage::new();
++        msg_out.set_key_exchange(KeyExchange {
++            keys: vec![Bytes::from(sign::sign(&our_pk.0, sk))],
++            ..Default::default()
++        });
++        Self::send_to_sink(sink, msg_out).await;
++        Some(our_sk)
++    }
++
+     fn get_server_sk(key: &str) -> (String, Option<sign::SecretKey>) {
+         let mut out_sk = None;
+         let mut key = key.to_owned();

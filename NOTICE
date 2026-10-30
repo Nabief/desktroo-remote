@@ -1,11 +1,18 @@
 Desktroo Remote — © 2026 Mdm-services.fr. Tous droits réservés.
 
-Cette image contient, sans modification, les programmes hbbs et hbbr de RustDesk Server
-(© Purslane Ltd. et contributeurs), distribués sous la licence GNU Affero General Public
-License version 3 (AGPL-3.0) :
+Cette image contient les programmes hbbs et hbbr de RustDesk Server (© Purslane Ltd. et
+contributeurs), version 1.1.16, distribués sous la licence GNU Affero General Public License
+version 3 (AGPL-3.0) :
 
   Code source : https://github.com/rustdesk/rustdesk-server
   Licence     : https://github.com/rustdesk/rustdesk-server/blob/master/LICENSE
+
+- hbbr est le programme officiel, sans modification.
+- hbbs est compilé depuis le code source officiel de la version 1.1.16, avec une modification
+  (échange de clés sur la connexion TCP, nécessaire aux clients connectés à un compte). Cette
+  modification est livrée dans l'image (/usr/share/doc/rustdesk-server/patches/) et publiée,
+  sous la même licence AGPL-3.0, dans le dossier hbbs-patch/ de
+  https://github.com/Nabief/desktroo-remote, avec le Dockerfile qui la compile.
 
 Ces programmes sont lancés comme des processus séparés. Le reste de l'image (server.js,
 public/) est le logiciel propriétaire Desktroo Remote, soumis à la licence d'utilisation de
