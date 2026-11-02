@@ -746,7 +746,7 @@ Get-ChildItem $places -Recurse -Filter *.lnk | ForEach-Object {
   brandCache = { v: brandVersion, text };
   return text;
 }
-function windowsScript(cfg, withPassword) {
+function windowsScript(cfg, withPassword, remoteConfig) {
   return [
     '# Desktroo Remote : installe RustDesk et le relie au serveur ' + HOST + '.',
     '# A lancer en administrateur :  powershell -ExecutionPolicy Bypass -File .\\desktroo-remote.ps1',
@@ -754,6 +754,7 @@ function windowsScript(cfg, withPassword) {
     '$ErrorActionPreference = \'Stop\'',
     '$cfg = ' + psq(cfg),
     '$setPassword = $' + (withPassword ? 'true' : 'false'),
+    '$remoteConfig = $' + (remoteConfig ? 'true' : 'false'),
     '',
     'if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {',
     '  Write-Host "Relancez ce script en administrateur (clic droit > Executer en tant qu\'administrateur)." -ForegroundColor Red; exit 1 }',
@@ -789,6 +790,9 @@ function windowsScript(cfg, withPassword) {
     '}',
     'if (-not $ok) { Write-Host \'Attention : le reglage du serveur n\'\'a pas pu etre verifie. Si le poste n\'\'apparait pas dans Desktroo Remote, relancez ce script.\' -ForegroundColor Yellow }',
     '$pw = \'\'',
+    // Sans cette option, RustDesk grise sa fenêtre pendant une prise en main pour que la personne connectée ne
+    // change pas ses réglages ; avec elle, le technicien peut les modifier à distance.
+    'if ($remoteConfig) { & $exe --option allow-remote-config-modification Y | Out-Null }',
     'if ($setPassword) {',
     '  $chars = \'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789\'.ToCharArray()',
     '  $rng = [Security.Cryptography.RandomNumberGenerator]::Create(); $bytes = New-Object byte[] 14; $rng.GetBytes($bytes)',
@@ -983,9 +987,10 @@ async function panelRoute(req, res, url, user) {
     const cfg = tech ? techConfigString(readKey()) : configString(readKey());
     if (!cfg) throw fail(tech ? 'no_api_url' : 'not_ready', 409);
     const withPw = !tech && url.searchParams.get('password') === '1';
-    log(tech ? 'script du poste technicien téléchargé par' : 'script de déploiement Windows téléchargé par', user, '(' + dm2[1] + ')', withPw ? '(avec mot de passe)' : '');
+    const remoteCfg = !tech && url.searchParams.get('remoteconfig') === '1';
+    log(tech ? 'script du poste technicien téléchargé par' : 'script de déploiement Windows téléchargé par', user, '(' + dm2[1] + ')', withPw ? '(avec mot de passe)' : '', remoteCfg ? '(réglages à distance)' : '');
     const name = brandSlug() + (tech ? '-technicien' : '') + '.' + dm2[1];
-    const body = dm2[1] === 'cmd' ? windowsCmd(windowsScript(cfg, withPw)) : '﻿' + windowsScript(cfg, withPw);
+    const body = dm2[1] === 'cmd' ? windowsCmd(windowsScript(cfg, withPw, remoteCfg)) : '﻿' + windowsScript(cfg, withPw, remoteCfg);
     return send(res, 200, body, 'application/octet-stream', { 'Content-Disposition': `attachment; filename="${name}"` });
   }
   // QR code de configuration pour l'appli RustDesk mobile (Android, iOS) : elle attend « config=<chaîne> »

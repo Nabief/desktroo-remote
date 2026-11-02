@@ -173,6 +173,7 @@
           <h2 data-t="ps_t"></h2>
           <p class="dim" data-t="ps_d"></p>
           <label class="check"><input type="checkbox" id="ps-pw"><span><b data-t="ps_pw"></b><br><span class="dim" data-t="ps_pw_d"></span></span></label>
+          <label class="check"><input type="checkbox" id="ps-rc"><span><b data-t="ps_rc"></b><br><span class="dim" data-t="ps_rc_d"></span></span></label>
           <div class="actions"><a class="dk-btn primary" id="dl-ps" href="deploy/windows.cmd" data-t="ps_btn"></a><a class="dim" id="dl-ps1" href="deploy/windows.ps1" data-t="ps1_link"></a></div>
           <ol class="steps" id="ps-steps"></ol>
         </div>
@@ -345,6 +346,7 @@ const I18N = {
     ps_t: 'Windows : installation par script', ps_d: 'Installe RustDesk comme service (accès même sans personne devant l’écran), le règle pour votre serveur et affiche l’ID du poste. Pour vos postes gérés ou un déploiement en série. Il habille aussi RustDesk aux couleurs de Desktroo Remote (logo, icône, raccourcis).',
     ps_pw: 'Créer un mot de passe permanent', ps_pw_d: 'Un mot de passe aléatoire, propre à chaque poste, affiché une seule fois à la fin du script : accès sans que l’utilisateur ait à accepter.',
     ps_btn: 'Télécharger le script',
+    ps_rc: 'Autoriser les réglages à distance', ps_rc_d: 'Pendant une prise en main, vous pouvez ouvrir et modifier les réglages de RustDesk sur le poste (sinon sa fenêtre est grisée pour la personne connectée). Pour vos postes gérés.',
     ps_s1: 'Copiez <b>desktroo-remote.cmd</b> sur le poste et double-cliquez dessus.',
     ps_s2: 'Si Windows affiche « Windows a protégé votre ordinateur », cliquez sur <b>Informations complémentaires</b> puis <b>Exécuter quand même</b>, et acceptez la demande d’autorisation administrateur.',
     ps_s3: 'À la fin, la fenêtre affiche l’ID du poste (et son mot de passe si vous l’avez demandé).',
@@ -445,6 +447,7 @@ const I18N = {
     ps_t: 'Windows: scripted installation', ps_d: 'Installs RustDesk as a service (access even with nobody at the screen), configures it for your server and shows the device ID. For your managed devices or bulk deployment. It also brands RustDesk with Desktroo Remote’s look (logo, icon, shortcuts).',
     ps_pw: 'Create a permanent password', ps_pw_d: 'A random password, unique to each device, shown only once at the end of the script: access without the user having to accept.',
     ps_btn: 'Download the script',
+    ps_rc: 'Allow remote settings changes', ps_rc_d: 'During a session, you can open and change RustDesk’s settings on the device (otherwise its window is greyed out for the connected person). For your managed devices.',
     ps_s1: 'Copy <b>desktroo-remote.cmd</b> to the device and double-click it.',
     ps_s2: 'If Windows shows “Windows protected your PC”, click <b>More info</b> then <b>Run anyway</b>, and accept the administrator prompt.',
     ps_s3: 'At the end, the window shows the device ID (and its password if you asked for one).',
@@ -545,6 +548,7 @@ const I18N = {
     ps_t: 'Windows: instalación por script', ps_d: 'Instala RustDesk como servicio (acceso incluso sin nadie delante de la pantalla), lo configura para tu servidor y muestra el ID del equipo. Para tus equipos gestionados o un despliegue en serie. También viste RustDesk con la imagen de Desktroo Remote (logo, icono, accesos directos).',
     ps_pw: 'Crear una contraseña permanente', ps_pw_d: 'Una contraseña aleatoria, propia de cada equipo, mostrada una sola vez al final del script: acceso sin que el usuario tenga que aceptar.',
     ps_btn: 'Descargar el script',
+    ps_rc: 'Permitir cambiar los ajustes a distancia', ps_rc_d: 'Durante una sesión, puedes abrir y cambiar los ajustes de RustDesk en el equipo (si no, su ventana aparece en gris para quien está conectado). Para tus equipos gestionados.',
     ps_s1: 'Copia <b>desktroo-remote.cmd</b> en el equipo y haz doble clic en él.',
     ps_s2: 'Si Windows muestra «Windows protegió su PC», pulsa <b>Más información</b> y luego <b>Ejecutar de todas formas</b>, y acepta la solicitud de administrador.',
     ps_s3: 'Al final, la ventana muestra el ID del equipo (y su contraseña si la has pedido).',
@@ -860,7 +864,11 @@ $('restart').addEventListener('click', async () => {
   try { await api('api/restart', { method: 'POST' }); $('restart-msg').textContent = T('restart_ok'); setTimeout(() => { $('restart-msg').textContent = ''; loadState(); }, 3000); }
   catch (e) { alert(e.message); }
 });
-$('ps-pw').addEventListener('change', () => { const q = $('ps-pw').checked ? '?password=1' : ''; $('dl-ps').href = 'deploy/windows.cmd' + q; $('dl-ps1').href = 'deploy/windows.ps1' + q; });
+function psLinks() {
+  const q = [$('ps-pw').checked ? 'password=1' : '', $('ps-rc').checked ? 'remoteconfig=1' : ''].filter(Boolean).join('&');
+  $('dl-ps').href = 'deploy/windows.cmd' + (q ? '?' + q : ''); $('dl-ps1').href = 'deploy/windows.ps1' + (q ? '?' + q : '');
+}
+$('ps-pw').addEventListener('change', psLinks); $('ps-rc').addEventListener('change', psLinks);
 $('log-proc').addEventListener('change', loadLogs);
 document.querySelectorAll('dialog [data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
 
