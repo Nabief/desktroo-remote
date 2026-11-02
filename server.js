@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const qrcode = require('./lib/qrcode.js');   // qrcode-generator 1.4.4 (Kazuhiko Arase, licence MIT)
 
 const PORT = 8080;
 const API_PORT = 8081;
@@ -120,6 +121,14 @@ function techConfigString(key) {
 }
 // Adresse d'API acceptée : https://nom[:port] (proxy), ou http://adresse-locale:21120 (réseau local).
 const API_URL_RE = /^(https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d{2,5})?|http:\/\/(?:10|127|192\.168|172\.(?:1[6-9]|2\d|3[01]))(?:\.\d{1,3}){1,3}:\d{2,5}|http:\/\/[a-z0-9-]{1,63}(?:\.local|\.lan|\.home)?:\d{2,5})$/;
+function qrSvg(text) {
+  const q = qrcode(0, 'M'); q.addData(text); q.make();
+  const n = q.getModuleCount(), m = 4, size = n + 2 * m;
+  let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m} ${r + m}h1v1h-1z`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">` +
+    `<rect width="${size}" height="${size}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
 function clientFilename(key) {
   const c = configString(key);
   return c ? `${brandSlug()}--${c}.exe` : '';   // le client découpe sur « -- » : le préfixe est ignoré
@@ -769,8 +778,16 @@ function windowsScript(cfg, withPassword) {
     '}',
     '',
     'Write-Host \'Reglage du serveur...\'',
-    '& $exe --config $cfg | Out-Null',
-    'Start-Sleep -Seconds 2',
+    // --config passe par le service RustDesk : juste apres une installation, il peut ne pas etre encore pret et le
+    // reglage est perdu sans erreur. On attend le service, puis on relit le reglage aupres du service, en recommencant.
+    '$t = 0; while ($t -lt 60) { $s = Get-Service -Name RustDesk -ErrorAction SilentlyContinue; if ($s -and $s.Status -eq \'Running\') { break }; if ($s) { try { Start-Service RustDesk -ErrorAction SilentlyContinue } catch { } }; Start-Sleep -Seconds 3; $t += 3 }',
+    '$ok = $false',
+    'for ($i = 0; $i -lt 12 -and -not $ok; $i++) {',
+    '  & $exe --config $cfg | Out-Null',
+    '  Start-Sleep -Seconds 5',
+    '  if ((& $exe --option custom-rendezvous-server | Out-String).Trim() -eq ' + psq(HOST) + ') { $ok = $true }',
+    '}',
+    'if (-not $ok) { Write-Host \'Attention : le reglage du serveur n\'\'a pas pu etre verifie. Si le poste n\'\'apparait pas dans Desktroo Remote, relancez ce script.\' -ForegroundColor Yellow }',
     '$pw = \'\'',
     'if ($setPassword) {',
     '  $chars = \'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789\'.ToCharArray()',
@@ -970,6 +987,14 @@ async function panelRoute(req, res, url, user) {
     const name = brandSlug() + (tech ? '-technicien' : '') + '.' + dm2[1];
     const body = dm2[1] === 'cmd' ? windowsCmd(windowsScript(cfg, withPw)) : '﻿' + windowsScript(cfg, withPw);
     return send(res, 200, body, 'application/octet-stream', { 'Content-Disposition': `attachment; filename="${name}"` });
+  }
+  // QR code de configuration pour l'appli RustDesk mobile (Android, iOS) : elle attend « config=<chaîne> »
+  // (scan_page.dart, ServerConfig.decode), le même format que le nom du .exe.
+  const qm = /^\/qr\/(client|tech)\.svg$/.exec(p);
+  if (qm && m === 'GET') {
+    const cfg = qm[1] === 'tech' ? techConfigString(readKey()) : configString(readKey());
+    if (!cfg) throw fail(qm[1] === 'tech' ? 'no_api_url' : 'not_ready', 409);
+    return send(res, 200, qrSvg('config=' + cfg), 'image/svg+xml', { 'Cache-Control': 'no-store' });
   }
   if (p === '/download/windows' && m === 'GET') {
     const name = clientFilename(readKey());

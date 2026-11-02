@@ -43,6 +43,7 @@ COPY hbbs-patch/ /usr/share/doc/rustdesk-server/patches/
 COPY NOTICE /usr/share/doc/rustdesk-server/NOTICE
 WORKDIR /app
 COPY server.js ./
+COPY lib ./lib
 COPY public ./public
 ENV NODE_ENV=production DATA_DIR=/data RD_BIN_DIR=/usr/local/bin \
     RD_SERVER_VERSION=${RUSTDESK_SERVER_VERSION} APP_VERSION=${APP_VERSION}

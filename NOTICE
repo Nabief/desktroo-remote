@@ -14,6 +14,8 @@ version 3 (AGPL-3.0) :
   sous la même licence AGPL-3.0, dans le dossier hbbs-patch/ de
   https://github.com/Nabief/desktroo-remote, avec le Dockerfile qui la compile.
 
+Le panneau utilise aussi qrcode-generator 1.4.4 (© 2009 Kazuhiko Arase, licence MIT, lib/qrcode.js).
+
 Ces programmes sont lancés comme des processus séparés. Le reste de l'image (server.js,
 public/) est le logiciel propriétaire Desktroo Remote, soumis à la licence d'utilisation de
 Desktroo (https://desktroo.fr).
