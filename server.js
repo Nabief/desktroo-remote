@@ -378,7 +378,21 @@ setInterval(() => { const now = Date.now(); for (const [k, f] of fails) if (f.un
 const challenges = new Map();   // secret de l'étape « code » -> {tech, exp, tries}
 function userPayload(name) {
   const t = auth.techs[name] || {};
-  return { name, display_name: t.display || name, email: '', note: '', status: 1, is_admin: false };
+  return { name, display_name: t.display || name, avatar: brandAvatar(), email: '', note: '', status: 1, is_admin: false };
+}
+// Avatar du technicien : l'icône de l'habillage, en data URI. Le client RustDesk l'envoie au poste à chaque connexion,
+// et la fenêtre « Autorisations » du poste l'affiche à la place de l'initiale sur fond de couleur. Une data URI ne
+// demande rien au poste (pas d'accès réseau à cette API) ; au-delà de 256 Ko on s'abstient.
+let avatarCache = null;
+function brandAvatar() {
+  if (avatarCache && avatarCache.v === brandVersion) return avatarCache.uri;
+  let uri = '';
+  try {
+    const png = brandCustom('icon') || brandDefault('brand/icon.png');
+    if (png && png.length <= 256 * 1024) uri = 'data:image/png;base64,' + png.toString('base64');
+  } catch (_) { }
+  avatarCache = { v: brandVersion, uri };
+  return uri;
 }
 function issueToken(name, b, ip) {
   const token = 'dtr_' + crypto.randomBytes(32).toString('base64url');
